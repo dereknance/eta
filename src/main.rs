@@ -1,10 +1,15 @@
+use std::io;
+
 use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::{event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}};
 use ratatui::{
-    DefaultTerminal, Frame,
+    buffer::Buffer,
+    layout::Rect,
     style::Stylize,
-    text::Line,
-    widgets::{Block, Paragraph},
+    symbols::border,
+    text::{Line, Text},
+    widgets::{Block, Paragraph, Widget},
+    DefaultTerminal, Frame,
 };
 
 fn main() -> color_eyre::Result<()> {
@@ -20,6 +25,7 @@ fn main() -> color_eyre::Result<()> {
 pub struct App {
     /// Is the application running?
     running: bool,
+    counter: u8,
 }
 
 impl App {
@@ -32,8 +38,8 @@ impl App {
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         self.running = true;
         while self.running {
-            terminal.draw(|frame| self.render(frame))?;
-            self.handle_crossterm_events()?;
+            terminal.draw(|frame| self.draw(frame))?;
+            self.handle_events()?;
         }
         Ok(())
     }
@@ -44,27 +50,15 @@ impl App {
     ///
     /// - <https://docs.rs/ratatui/latest/ratatui/widgets/index.html>
     /// - <https://github.com/ratatui/ratatui/tree/main/ratatui-widgets/examples>
-    fn render(&mut self, frame: &mut Frame) {
-        let title = Line::from("Ratatui Simple Template")
-            .bold()
-            .blue()
-            .centered();
-        let text = "Hello, Ratatui!\n\n\
-            Created using https://github.com/ratatui/templates\n\
-            Press `Esc`, `Ctrl-C` or `q` to stop running.";
-        frame.render_widget(
-            Paragraph::new(text)
-                .block(Block::bordered().title(title))
-                .centered(),
-            frame.area(),
-        )
+    fn draw(&self, frame: &mut Frame) {
+        frame.render_widget(self, frame.area());
     }
 
     /// Reads the crossterm events and updates the state of [`App`].
     ///
     /// If your application needs to perform work in between handling events, you can use the
     /// [`event::poll`] function to check if there are any events available with a timeout.
-    fn handle_crossterm_events(&mut self) -> Result<()> {
+    fn handle_events(&mut self) -> Result<()> {
         match event::read()? {
             // it's important to check KeyEventKind::Press to avoid handling key release events
             Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key_event(key),
@@ -88,5 +82,64 @@ impl App {
     /// Set running to false to quit the application.
     fn quit(&mut self) {
         self.running = false;
+    }
+}
+
+impl Widget for &App {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let title = Line::from(" Counter App Tutorial ".bold());
+        let instructions = Line::from(vec![
+            " Decrement ".into(),
+            "<Left>".blue().bold(),
+            " Increment ".into(),
+            "<Right>".blue().bold(),
+            " Quit ".into(),
+            "<Q> ".blue().bold(),
+        ]);
+        let block = Block::bordered()
+            .title(title.centered())
+            .title_bottom(instructions.centered())
+            .border_set(border::THICK);
+
+        let counter_text = Text::from(vec![Line::from(vec![
+            "Value: ".into(),
+            self.counter.to_string().yellow(),
+        ])]);
+
+        Paragraph::new(counter_text)
+            .centered()
+            .block(block)
+            .render(area, buf);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Style;
+
+    #[test]
+    fn render() {
+        let app = App::default();
+        let mut buf = Buffer::empty(Rect::new(0, 0, 50, 4));
+
+        app.render(buf.area, &mut buf);
+
+        let mut expected = Buffer::with_lines(vec![
+            "┏━━━━━━━━━━━━━ Counter App Tutorial ━━━━━━━━━━━━━┓",
+            "┃                    Value: 0                    ┃",
+            "┃                                                ┃",
+            "┗━ Decrement <Left> Increment <Right> Quit <Q> ━━┛",
+        ]);
+        let title_style = Style::new().bold();
+        let counter_style = Style::new().yellow();
+        let key_style = Style::new().blue().bold();
+        expected.set_style(Rect::new(14, 0, 22, 1), title_style);
+        expected.set_style(Rect::new(28, 1, 1, 1), counter_style);
+        expected.set_style(Rect::new(13, 3, 6, 1), key_style);
+        expected.set_style(Rect::new(30, 3, 7, 1), key_style);
+        expected.set_style(Rect::new(43, 3, 4, 1), key_style);
+
+        assert_eq!(buf, expected);
     }
 }
