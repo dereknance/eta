@@ -1,6 +1,4 @@
-use std::io;
-
-use color_eyre::Result;
+use color_eyre::{eyre::{Context}, Result};
 use crossterm::{event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}};
 use ratatui::{
     buffer::Buffer,
@@ -61,16 +59,15 @@ impl App {
     fn handle_events(&mut self) -> Result<()> {
         match event::read()? {
             // it's important to check KeyEventKind::Press to avoid handling key release events
-            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
-            }
-            _ => {}
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => self
+                .handle_key_event(key_event)
+                .wrap_err_with(|| format!("handling key event failed:\n{key_event:#?}")),
+            _ => Ok(())
         }
-        Ok(())
     }
 
     /// Handles the key events and updates the state of [`App`].
-    fn handle_key_event(&mut self, key: KeyEvent) {
+    fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
         match (key.modifiers, key.code) {
             (_,KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL,
@@ -78,19 +75,26 @@ impl App {
             {
                 self.exit()
             }
-            (_, KeyCode::Left) => self.decrement_counter(),
-            (_, KeyCode::Right) => self.increment_counter(),
+            (_, KeyCode::Left) => self.decrement_counter()?,
+            (_, KeyCode::Right) => self.increment_counter()?,
             // Add other key handlers here.
             _ => {}
         }
+        Ok(())
     }
 
-    fn increment_counter(&mut self) {
-        self.counter += 1;
+    fn increment_counter(&mut self) -> Result<()> {
+        if self.counter < u8::MAX {
+            self.counter += 1;
+        }
+        Ok(())
     }
 
-    fn decrement_counter(&mut self) {
-        self.counter -= 1;
+    fn decrement_counter(&mut self) -> Result<()> {
+        if self.counter > u8::MIN {
+            self.counter -= 1;
+        }
+        Ok(())
     }
 
     /// Set running to false to quit the application.
@@ -129,6 +133,8 @@ impl Widget for &App {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
     use super::*;
     use ratatui::style::Style;
 
@@ -161,16 +167,33 @@ mod tests {
     fn handle_key_event() -> io::Result<()> {
         let mut app = App::default();
 
-        app.handle_key_event(KeyCode::Right.into());
+        app.handle_key_event(KeyCode::Right.into()).unwrap();
         assert_eq!(app.counter, 1);
 
-        app.handle_key_event(KeyCode::Left.into());
+        app.handle_key_event(KeyCode::Left.into()).unwrap();
         assert_eq!(app.counter, 0);
 
         let mut app = App::default();
-        app.handle_key_event(KeyCode::Char('q').into());
+        app.handle_key_event(KeyCode::Char('q').into()).unwrap();
         assert!(!app.running);
 
         Ok(())
+    }
+
+    #[test]
+    fn handle_key_event_panic() {
+        let mut app = App::default();
+        assert!(app.handle_key_event(KeyCode::Left.into()).is_ok());
+    }
+
+    #[test]
+    fn handle_key_event_overflow() {
+        let mut app = App::default();
+        for _ in 0..u8::MAX
+        {
+            assert!(app.handle_key_event(KeyCode::Right.into()).is_ok());
+        }
+        assert!(app.handle_key_event(KeyCode::Right.into()).is_ok());
+        assert_eq!(app.counter, u8::MAX);
     }
 }
