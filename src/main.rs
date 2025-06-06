@@ -61,26 +61,40 @@ impl App {
     fn handle_events(&mut self) -> Result<()> {
         match event::read()? {
             // it's important to check KeyEventKind::Press to avoid handling key release events
-            Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key_event(key),
-            Event::Mouse(_) => {}
-            Event::Resize(_, _) => {}
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                self.handle_key_event(key_event)
+            }
             _ => {}
         }
         Ok(())
     }
 
     /// Handles the key events and updates the state of [`App`].
-    fn on_key_event(&mut self, key: KeyEvent) {
+    fn handle_key_event(&mut self, key: KeyEvent) {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc | KeyCode::Char('q'))
-            | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
+            (_,KeyCode::Esc | KeyCode::Char('q'))
+            | (KeyModifiers::CONTROL,
+                KeyCode::Char('c') | KeyCode::Char('C')) =>
+            {
+                self.exit()
+            }
+            (_, KeyCode::Left) => self.decrement_counter(),
+            (_, KeyCode::Right) => self.increment_counter(),
             // Add other key handlers here.
             _ => {}
         }
     }
 
+    fn increment_counter(&mut self) {
+        self.counter += 1;
+    }
+
+    fn decrement_counter(&mut self) {
+        self.counter -= 1;
+    }
+
     /// Set running to false to quit the application.
-    fn quit(&mut self) {
+    fn exit(&mut self) {
         self.running = false;
     }
 }
@@ -141,5 +155,22 @@ mod tests {
         expected.set_style(Rect::new(43, 3, 4, 1), key_style);
 
         assert_eq!(buf, expected);
+    }
+
+    #[test]
+    fn handle_key_event() -> io::Result<()> {
+        let mut app = App::default();
+
+        app.handle_key_event(KeyCode::Right.into());
+        assert_eq!(app.counter, 1);
+
+        app.handle_key_event(KeyCode::Left.into());
+        assert_eq!(app.counter, 0);
+
+        let mut app = App::default();
+        app.handle_key_event(KeyCode::Char('q').into());
+        assert!(!app.running);
+
+        Ok(())
     }
 }
