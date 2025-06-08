@@ -1,8 +1,8 @@
 use ratatui::{
     buffer::Buffer,
-    layout::{Alignment, Rect},
-    style::{Color, Stylize},
-    widgets::{Block, BorderType, Paragraph, Widget},
+    layout::{Alignment, Constraint, Rect},
+    style::{Color, Style, Stylize},
+    widgets::{Block, BorderType, Paragraph, Row, StatefulWidget, Table, Widget},
 };
 
 use crate::app::{App, Mode};
@@ -51,18 +51,32 @@ fn render_index(app: &App, area: Rect, buf: &mut Buffer) {
 }
 
 fn render_message_table(app: &App, area: Rect, buf: &mut Buffer) {
-    let text = format!(
-        "This is where the message table would go.\n\
-            Press `Esc`, or `q` to return to the index, \n\
-            or `Ctrl-C` to stop running."
-    );
+    let mut table_state = app.message_table_state().borrow_mut();
+    let rows = app
+        .messages()
+        .unwrap()
+        .iter()
+        .map(|m| Row::new(vec![
+            format!("{:4}", m.id()),
+            m.from().into(),
+            m.subject().into()
+        ]))
+        .collect::<Vec<Row>>();
+    let widths = [
+        Constraint::Length(5),
+        Constraint::Length(10),
+        Constraint::Length(50),
+    ];
+    let table = Table::new(rows, widths)
+        .column_spacing(1)
+        .style(Style::new())
+        .header(
+            Row::new(vec!["ID", "From", "Subject"])
+                .style(Style::new().bold()),
+        )
+        .row_highlight_style(Style::new().reversed());
 
-    let paragraph = Paragraph::new(text)
-        .fg(Color::Cyan)
-        .bg(Color::Black)
-        .centered();
-
-    paragraph.render(area, buf);
+    StatefulWidget::render(table, area, buf, &mut *table_state);
 }
 
 fn render_blank(area: Rect, buf: &mut Buffer) {

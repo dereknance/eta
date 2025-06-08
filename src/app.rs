@@ -1,4 +1,6 @@
-use crate::{event::{AppEvent, Event, EventHandler}, message::{DefaultMessageProvider, MessageProvider}};
+use std::{cell::RefCell, io};
+
+use crate::{event::{AppEvent, Event, EventHandler}, message::{DefaultMessageProvider, Message, MessageProvider}};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers}, widgets::{ScrollbarState, TableState}, DefaultTerminal
 };
@@ -17,7 +19,7 @@ pub struct App {
     /// Message provider.
     messages: DefaultMessageProvider,
     /// Message table state.
-    message_table_state: TableState,
+    message_table_state: RefCell<TableState>,
     /// Message table scrollbar state.
     message_scroll_state: ScrollbarState,
 }
@@ -37,7 +39,7 @@ impl Default for App {
             events: EventHandler::new(),
             mode: Mode::Index,
             messages: DefaultMessageProvider::new(),
-            message_table_state: TableState::default().with_selected(0),
+            message_table_state: RefCell::new(TableState::default().with_selected(0)),
             message_scroll_state: ScrollbarState::default(),
         };
         app.message_scroll_state = ScrollbarState::new(app.messages.len() - 1);
@@ -159,7 +161,8 @@ impl App {
     }
 
     fn next_message(&mut self) {
-        let i = match self.message_table_state.selected() {
+        let mut state = self.message_table_state.borrow_mut();
+        let i = match state.selected() {
             Some(i) => {
                 if i >= self.messages.len() - 1 {
                     0
@@ -169,12 +172,13 @@ impl App {
             }
             None => 0,
         };
-        self.message_table_state.select(Some(i));
-        self.message_scroll_state = self.message_scroll_state.position(i);
+        state.select(Some(i));
+        // self.message_scroll_state = self.message_scroll_state.position(i);
     }
 
     fn previous_message(&mut self) {
-        let i = match self.message_table_state.selected() {
+        let mut state = self.message_table_state.borrow_mut();
+        let i = match state.selected() {
             Some(i) => {
                 if i == 0 {
                     self.messages.len() - 1
@@ -184,8 +188,8 @@ impl App {
             }
             None => 0,
         };
-        self.message_table_state.select(Some(i));
-        self.message_scroll_state = self.message_scroll_state.position(i);
+        state.select(Some(i));
+        // self.message_scroll_state = self.message_scroll_state.position(i);
     }
 
     pub fn counter(&self) -> u8 {
@@ -194,5 +198,13 @@ impl App {
 
     pub fn mode(&self) -> &Mode {
         &self.mode
+    }
+
+    pub fn messages(&self) -> Result<&Vec<Message>, io::Error> {
+        self.messages.get()
+    }
+
+    pub fn message_table_state(&self) -> &RefCell<TableState> {
+        &self.message_table_state
     }
 }

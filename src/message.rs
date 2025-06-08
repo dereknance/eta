@@ -3,15 +3,24 @@ use std::io;
 #[derive(Debug, Default, Clone)]
 pub struct Message {
     id: u64,
+    from: String,
     to: String,
     subject: String,
     body: String,
 }
 
 impl Message {
-    pub fn new(id: u64, to: String, subject: String, body: String) -> Self {
+    pub fn new(
+        id: u64,
+        from: String,
+        to: String,
+        subject: String,
+        body: String
+    ) -> Self
+    {
         Message {
             id,
+            from,
             to,
             subject,
             body,
@@ -20,6 +29,10 @@ impl Message {
 
     pub fn id(&self) -> u64 {
         self.id
+    }
+
+    pub fn from(&self) -> &str {
+        &self.from
     }
 
     pub fn to(&self) -> &str {
@@ -38,6 +51,10 @@ impl Message {
         self.id = id;
     }
 
+    pub fn set_from(&mut self, from: String) {
+        self.from = from;
+    }
+
     pub fn set_to(&mut self, to: String) {
         self.to = to;
     }
@@ -53,6 +70,7 @@ impl Message {
 
 pub trait MessageProvider {
     fn get(&self) -> Result<&Vec<Message>, io::Error>;
+    #[allow(dead_code)]
     fn delete(&mut self, id: u64) -> Result<(), io::Error>;
     fn len(&self) -> usize;
 }
@@ -69,7 +87,14 @@ impl DefaultMessageProvider {
                 Message::new(
                     1,
                     String::from("bob@bob.me"),
+                    String::from("me@me.me"),
                     String::from("Hi"),
+                    String::from("Hello there")),
+                Message::new(
+                    2,
+                    String::from("alice@alice.me"),
+                    String::from("me@me.me"),
+                    String::from("TPS Reports"),
                     String::from("Hello there")),
             ]
         }
