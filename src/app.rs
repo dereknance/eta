@@ -1,177 +1,87 @@
-use color_eyre::Result;
-use crossterm::event::KeyEvent;
-use ratatui::prelude::Rect;
-use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
-use tracing::{debug, info};
-
-use crate::{
-    action::Action,
-    components::{Component, fps::FpsCounter, home::Home},
-    config::Config,
-    tui::{Event, Tui},
+use crate::event::{AppEvent, Event, EventHandler};
+use ratatui::{
+    DefaultTerminal,
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
 
+/// Application.
+#[derive(Debug)]
 pub struct App {
-    config: Config,
-    tick_rate: f64,
-    frame_rate: f64,
-    components: Vec<Box<dyn Component>>,
-    should_quit: bool,
-    should_suspend: bool,
-    mode: Mode,
-    last_tick_key_events: Vec<KeyEvent>,
-    action_tx: mpsc::UnboundedSender<Action>,
-    action_rx: mpsc::UnboundedReceiver<Action>,
+    /// Is the application running?
+    pub running: bool,
+    /// Counter.
+    pub counter: u8,
+    /// Event handler.
+    pub events: EventHandler,
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Mode {
-    #[default]
-    Home,
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            running: true,
+            counter: 0,
+            events: EventHandler::new(),
+        }
+    }
 }
 
 impl App {
-    pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
-        let (action_tx, action_rx) = mpsc::unbounded_channel();
-        Ok(Self {
-            tick_rate,
-            frame_rate,
-            components: vec![Box::new(Home::new()), Box::new(FpsCounter::default())],
-            should_quit: false,
-            should_suspend: false,
-            config: Config::new()?,
-            mode: Mode::Home,
-            last_tick_key_events: Vec::new(),
-            action_tx,
-            action_rx,
-        })
+    /// Constructs a new instance of [`App`].
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub async fn run(&mut self) -> Result<()> {
-        let mut tui = Tui::new()?
-            // .mouse(true) // uncomment this line to enable mouse support
-            .tick_rate(self.tick_rate)
-            .frame_rate(self.frame_rate);
-        tui.enter()?;
-
-        for component in self.components.iter_mut() {
-            component.register_action_handler(self.action_tx.clone())?;
-        }
-        for component in self.components.iter_mut() {
-            component.register_config_handler(self.config.clone())?;
-        }
-        for component in self.components.iter_mut() {
-            component.init(tui.size()?)?;
-        }
-
-        let action_tx = self.action_tx.clone();
-        loop {
-            self.handle_events(&mut tui).await?;
-            self.handle_actions(&mut tui)?;
-            if self.should_suspend {
-                tui.suspend()?;
-                action_tx.send(Action::Resume)?;
-                action_tx.send(Action::ClearScreen)?;
-                // tui.mouse(true);
-                tui.enter()?;
-            } else if self.should_quit {
-                tui.stop()?;
-                break;
+    /// Run the application's main loop.
+    pub async fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
+        while self.running {
+            terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;
+            match self.events.next().await? {
+                Event::Tick => self.tick(),
+                Event::Crossterm(event) => match event {
+                    crossterm::event::Event::Key(key_event) => self.handle_key_events(key_event)?,
+                    _ => {}
+                },
+                Event::App(app_event) => match app_event {
+                    AppEvent::Increment => self.increment_counter(),
+                    AppEvent::Decrement => self.decrement_counter(),
+                    AppEvent::Quit => self.quit(),
+                },
             }
         }
-        tui.exit()?;
         Ok(())
     }
 
-    async fn handle_events(&mut self, tui: &mut Tui) -> Result<()> {
-        let Some(event) = tui.next_event().await else {
-            return Ok(());
-        };
-        let action_tx = self.action_tx.clone();
-        match event {
-            Event::Quit => action_tx.send(Action::Quit)?,
-            Event::Tick => action_tx.send(Action::Tick)?,
-            Event::Render => action_tx.send(Action::Render)?,
-            Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
-            Event::Key(key) => self.handle_key_event(key)?,
+    /// Handles the key events and updates the state of [`App`].
+    pub fn handle_key_events(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
+        match key_event.code {
+            KeyCode::Esc | KeyCode::Char('q') => self.events.send(AppEvent::Quit),
+            KeyCode::Char('c' | 'C') if key_event.modifiers == KeyModifiers::CONTROL => {
+                self.events.send(AppEvent::Quit)
+            }
+            KeyCode::Right => self.events.send(AppEvent::Increment),
+            KeyCode::Left => self.events.send(AppEvent::Decrement),
+            // Other handlers you could add here.
             _ => {}
         }
-        for component in self.components.iter_mut() {
-            if let Some(action) = component.handle_events(Some(event.clone()))? {
-                action_tx.send(action)?;
-            }
-        }
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
-        let action_tx = self.action_tx.clone();
-        let Some(keymap) = self.config.keybindings.get(&self.mode) else {
-            return Ok(());
-        };
-        match keymap.get(&vec![key]) {
-            Some(action) => {
-                info!("Got action: {action:?}");
-                action_tx.send(action.clone())?;
-            }
-            _ => {
-                // If the key was not handled as a single key action,
-                // then consider it for multi-key combinations.
-                self.last_tick_key_events.push(key);
+    /// Handles the tick event of the terminal.
+    ///
+    /// The tick event is where you can update the state of your application with any logic that
+    /// needs to be updated at a fixed frame rate. E.g. polling a server, updating an animation.
+    pub fn tick(&self) {}
 
-                // Check for multi-key combinations
-                if let Some(action) = keymap.get(&self.last_tick_key_events) {
-                    info!("Got action: {action:?}");
-                    action_tx.send(action.clone())?;
-                }
-            }
-        }
-        Ok(())
+    /// Set running to false to quit the application.
+    pub fn quit(&mut self) {
+        self.running = false;
     }
 
-    fn handle_actions(&mut self, tui: &mut Tui) -> Result<()> {
-        while let Ok(action) = self.action_rx.try_recv() {
-            if action != Action::Tick && action != Action::Render {
-                debug!("{action:?}");
-            }
-            match action {
-                Action::Tick => {
-                    self.last_tick_key_events.drain(..);
-                }
-                Action::Quit => self.should_quit = true,
-                Action::Suspend => self.should_suspend = true,
-                Action::Resume => self.should_suspend = false,
-                Action::ClearScreen => tui.terminal.clear()?,
-                Action::Resize(w, h) => self.handle_resize(tui, w, h)?,
-                Action::Render => self.render(tui)?,
-                _ => {}
-            }
-            for component in self.components.iter_mut() {
-                if let Some(action) = component.update(action.clone())? {
-                    self.action_tx.send(action)?
-                };
-            }
-        }
-        Ok(())
+    pub fn increment_counter(&mut self) {
+        self.counter = self.counter.saturating_add(1);
     }
 
-    fn handle_resize(&mut self, tui: &mut Tui, w: u16, h: u16) -> Result<()> {
-        tui.resize(Rect::new(0, 0, w, h))?;
-        self.render(tui)?;
-        Ok(())
-    }
-
-    fn render(&mut self, tui: &mut Tui) -> Result<()> {
-        tui.draw(|frame| {
-            for component in self.components.iter_mut() {
-                if let Err(err) = component.draw(frame, frame.area()) {
-                    let _ = self
-                        .action_tx
-                        .send(Action::Error(format!("Failed to draw: {:?}", err)));
-                }
-            }
-        })?;
-        Ok(())
+    pub fn decrement_counter(&mut self) {
+        self.counter = self.counter.saturating_sub(1);
     }
 }
