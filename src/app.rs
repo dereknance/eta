@@ -1,7 +1,6 @@
-use crate::event::{AppEvent, Event, EventHandler};
+use crate::{event::{AppEvent, Event, EventHandler}, message::{DefaultMessageProvider, MessageProvider}};
 use ratatui::{
-    DefaultTerminal,
-    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers}, widgets::{ScrollbarState, TableState}, DefaultTerminal
 };
 
 /// Application.
@@ -15,22 +14,34 @@ pub struct App {
     events: EventHandler,
     /// Current application mode.
     mode: Mode,
+    /// Message provider.
+    messages: DefaultMessageProvider,
+    /// Message table state.
+    message_table_state: TableState,
+    /// Message table scrollbar state.
+    message_scroll_state: ScrollbarState,
 }
 
 #[derive(Debug)]
 pub enum Mode {
     Index,
+    MessageTable,
     Blank,
 }
 
 impl Default for App {
     fn default() -> Self {
-        Self {
+        let mut app = Self {
             running: true,
             counter: 0,
             events: EventHandler::new(),
             mode: Mode::Index,
-        }
+            messages: DefaultMessageProvider::new(),
+            message_table_state: TableState::default().with_selected(0),
+            message_scroll_state: ScrollbarState::default(),
+        };
+        app.message_scroll_state = ScrollbarState::new(app.messages.len() - 1);
+        app
     }
 }
 
@@ -75,6 +86,9 @@ impl App {
             KeyCode::Right => self.events.send(AppEvent::Increment),
             KeyCode::Left => self.events.send(AppEvent::Decrement),
             KeyCode::Char('b') => self.handle_b_key(),
+            KeyCode::Char('m') => self.handle_m_key(),
+            KeyCode::Char('j') => self.handle_j_key(),
+            KeyCode::Char('k') => self.handle_k_key(),
             // Other handlers you could add here.
             _ => {}
         }
@@ -99,18 +113,41 @@ impl App {
         };
     }
 
+    fn handle_m_key(&mut self) {
+        match self.mode {
+            // TODO this _may_ need to wind up asynchronously loading
+            // messages
+            Mode::Index => self.mode = Mode::MessageTable,
+            _ => ()
+        }
+    }
+
     fn handle_esc_key(&mut self) {
         match self.mode {
             Mode::Index => self.events.send(AppEvent::Quit),
-            Mode::Blank => self.mode = Mode::Index,
+            _ => self.mode = Mode::Index,
         };
     }
 
     fn handle_q_key(&mut self) {
         match self.mode {
             Mode::Index => self.events.send(AppEvent::Quit),
-            Mode::Blank => self.mode = Mode::Index,
+            _ => self.mode = Mode::Index,
         };
+    }
+
+    fn handle_j_key(&mut self) {
+        match self.mode {
+            Mode::MessageTable => self.next_message(),
+            _ => ()
+        }
+    }
+
+    fn handle_k_key(&mut self) {
+        match self.mode {
+            Mode::MessageTable => self.previous_message(),
+            _ => ()
+        }
     }
 
     fn increment_counter(&mut self) {
@@ -119,6 +156,36 @@ impl App {
 
     fn decrement_counter(&mut self) {
         self.counter = self.counter.saturating_sub(1);
+    }
+
+    fn next_message(&mut self) {
+        let i = match self.message_table_state.selected() {
+            Some(i) => {
+                if i >= self.messages.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.message_table_state.select(Some(i));
+        self.message_scroll_state = self.message_scroll_state.position(i);
+    }
+
+    fn previous_message(&mut self) {
+        let i = match self.message_table_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.messages.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.message_table_state.select(Some(i));
+        self.message_scroll_state = self.message_scroll_state.position(i);
     }
 
     pub fn counter(&self) -> u8 {

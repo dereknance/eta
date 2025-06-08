@@ -15,19 +15,25 @@ impl Widget for &App {
     // - https://docs.rs/ratatui/latest/ratatui/widgets/index.html
     // - https://github.com/ratatui/ratatui/tree/master/examples
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let block = Block::bordered()
+            .title(" eta ")
+            .title_alignment(Alignment::Center)
+            .border_type(BorderType::Rounded)
+            .fg(Color::Cyan)
+            .bg(Color::Black);
+        let inner_area = block.inner(area);
+
+        block.render(area, buf);
+
         match self.mode() {
-            Mode::Index => render_index(self, area, buf),
-            Mode::Blank => render_blank(area, buf),
+            Mode::Index => render_index(self, inner_area, buf),
+            Mode::MessageTable => render_message_table(self, inner_area, buf),
+            Mode::Blank => render_blank(inner_area, buf),
         };
     }
 }
 
 fn render_index(app: &App, area: Rect, buf: &mut Buffer) {
-    let block = Block::bordered()
-        .title("eta")
-        .title_alignment(Alignment::Center)
-        .border_type(BorderType::Rounded);
-
     let text = format!(
         "This is a tui template.\n\
             Press `Esc`, `Ctrl-C` or `q` to stop running.\n\
@@ -37,7 +43,21 @@ fn render_index(app: &App, area: Rect, buf: &mut Buffer) {
     );
 
     let paragraph = Paragraph::new(text)
-        .block(block)
+        .fg(Color::Cyan)
+        .bg(Color::Black)
+        .centered();
+
+    paragraph.render(area, buf);
+}
+
+fn render_message_table(app: &App, area: Rect, buf: &mut Buffer) {
+    let text = format!(
+        "This is where the message table would go.\n\
+            Press `Esc`, or `q` to return to the index, \n\
+            or `Ctrl-C` to stop running."
+    );
+
+    let paragraph = Paragraph::new(text)
         .fg(Color::Cyan)
         .bg(Color::Black)
         .centered();
@@ -46,15 +66,9 @@ fn render_index(app: &App, area: Rect, buf: &mut Buffer) {
 }
 
 fn render_blank(area: Rect, buf: &mut Buffer) {
-    let block = Block::bordered()
-        .title("eta")
-        .title_alignment(Alignment::Center)
-        .border_type(BorderType::Rounded);
-
     let text = "";
 
     let paragraph = Paragraph::new(text)
-        .block(block)
         .fg(Color::Cyan)
         .bg(Color::Black)
         .centered();
