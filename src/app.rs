@@ -28,6 +28,7 @@ pub struct App {
 pub enum Mode {
     Index,
     MessageTable,
+    Message(usize),
     Blank,
 }
 
@@ -83,6 +84,7 @@ impl App {
                 self.events.send(AppEvent::Quit)
             }
             // Mode-dependent keypresses
+            KeyCode::Enter => self.handle_enter_key(),
             KeyCode::Esc => self.handle_esc_key(),
             KeyCode::Char('q') => self.handle_q_key(),
             KeyCode::Right => self.events.send(AppEvent::Increment),
@@ -124,6 +126,14 @@ impl App {
         }
     }
 
+    fn handle_enter_key(&mut self) {
+        match self.mode {
+            Mode::MessageTable => self.mode = Mode::Message(
+                self.message_table_state.borrow().selected().unwrap()),
+            _ => ()
+        }
+    }
+
     fn handle_esc_key(&mut self) {
         match self.mode {
             Mode::Index => self.events.send(AppEvent::Quit),
@@ -134,6 +144,7 @@ impl App {
     fn handle_q_key(&mut self) {
         match self.mode {
             Mode::Index => self.events.send(AppEvent::Quit),
+            Mode::Message(_) => self.mode = Mode::MessageTable,
             _ => self.mode = Mode::Index,
         };
     }
@@ -190,6 +201,23 @@ impl App {
         };
         state.select(Some(i));
         // self.message_scroll_state = self.message_scroll_state.position(i);
+    }
+
+    pub fn view_message(&self, selected: usize) -> String {
+        let mut message = String::from("Not found");
+
+        for i in 0..self.messages.len() {
+            if i == selected {
+                message = self.messages()
+                    .unwrap()
+                    .get(i)
+                    .unwrap()
+                    .body()
+                    .into();
+            }
+        }
+
+        message
     }
 
     pub fn counter(&self) -> u8 {

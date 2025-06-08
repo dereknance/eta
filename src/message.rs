@@ -95,7 +95,9 @@ impl DefaultMessageProvider {
                     String::from("alice@alice.me"),
                     String::from("me@me.me"),
                     String::from("TPS Reports"),
-                    String::from("Hello there")),
+                    String::from(
+                        "So uhh...if you could just get those done\n\
+                        yeahh....that'd be greaaaat.")),
             ]
         }
     }

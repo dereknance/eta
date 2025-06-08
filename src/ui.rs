@@ -28,6 +28,7 @@ impl Widget for &App {
         match self.mode() {
             Mode::Index => render_index(self, inner_area, buf),
             Mode::MessageTable => render_message_table(self, inner_area, buf),
+            Mode::Message(selected) => render_message(self, *selected, inner_area, buf),
             Mode::Blank => render_blank(inner_area, buf),
         };
     }
@@ -77,6 +78,13 @@ fn render_message_table(app: &App, area: Rect, buf: &mut Buffer) {
         .row_highlight_style(Style::new().reversed());
 
     StatefulWidget::render(table, area, buf, &mut *table_state);
+}
+
+fn render_message(app: &App, selected: usize, area: Rect, buf: &mut Buffer) {
+    let message = app.view_message(selected);
+    Paragraph::new(message)
+        .bg(Color::Black)
+        .render(area, buf);
 }
 
 fn render_blank(area: Rect, buf: &mut Buffer) {
