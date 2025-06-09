@@ -30,6 +30,8 @@ impl Widget for &App {
             Mode::MessageTable => render_message_table(self, inner_area, buf),
             Mode::Message(selected) => render_message(self, *selected, inner_area, buf),
             Mode::Blank => render_blank(inner_area, buf),
+            Mode::ComposeInit => render_compose_init(inner_area, buf),
+            Mode::Compose => render_compose(inner_area, buf),
         };
     }
 }
@@ -85,6 +87,28 @@ fn render_message(app: &App, selected: usize, area: Rect, buf: &mut Buffer) {
     Paragraph::new(message)
         .bg(Color::Black)
         .render(area, buf);
+}
+
+fn render_compose_init(area: Rect, buf: &mut Buffer) {
+    let text = "Compose init";
+
+    let paragraph = Paragraph::new(text)
+        .fg(Color::Cyan)
+        .bg(Color::Black)
+        .centered();
+
+    paragraph.render(area, buf);
+}
+
+fn render_compose(area: Rect, buf: &mut Buffer) {
+    let text = "compose";
+
+    let paragraph = Paragraph::new(text)
+        .fg(Color::Cyan)
+        .bg(Color::Black)
+        .centered();
+
+    paragraph.render(area, buf);
 }
 
 fn render_blank(area: Rect, buf: &mut Buffer) {

@@ -29,6 +29,8 @@ pub enum Mode {
     Index,
     MessageTable,
     Message(usize),
+    ComposeInit,
+    Compose,
     Blank,
 }
 
@@ -86,13 +88,14 @@ impl App {
             // Mode-dependent keypresses
             KeyCode::Enter => self.handle_enter_key(),
             KeyCode::Esc => self.handle_esc_key(),
+            KeyCode::Char('b') => self.handle_b_key(),
+            KeyCode::Char('c') => self.handle_c_key(),
+            KeyCode::Char('j') => self.handle_j_key(),
+            KeyCode::Char('k') => self.handle_k_key(),
+            KeyCode::Char('m') => self.handle_m_key(),
             KeyCode::Char('q') => self.handle_q_key(),
             KeyCode::Right => self.events.send(AppEvent::Increment),
             KeyCode::Left => self.events.send(AppEvent::Decrement),
-            KeyCode::Char('b') => self.handle_b_key(),
-            KeyCode::Char('m') => self.handle_m_key(),
-            KeyCode::Char('j') => self.handle_j_key(),
-            KeyCode::Char('k') => self.handle_k_key(),
             // Other handlers you could add here.
             _ => {}
         }
@@ -117,6 +120,14 @@ impl App {
         };
     }
 
+    fn handle_c_key(&mut self) {
+        match self.mode {
+            Mode::Index => self.mode = Mode::ComposeInit,
+            Mode::ComposeInit => self.mode = Mode::Compose,
+            _ => ()
+        };
+    }
+
     fn handle_m_key(&mut self) {
         match self.mode {
             // TODO this _may_ need to wind up asynchronously loading
@@ -137,6 +148,8 @@ impl App {
     fn handle_esc_key(&mut self) {
         match self.mode {
             Mode::Index => self.events.send(AppEvent::Quit),
+            Mode::Message(_) => self.mode = Mode::MessageTable,
+            Mode::Compose => self.mode = Mode::ComposeInit,
             _ => self.mode = Mode::Index,
         };
     }
@@ -145,6 +158,7 @@ impl App {
         match self.mode {
             Mode::Index => self.events.send(AppEvent::Quit),
             Mode::Message(_) => self.mode = Mode::MessageTable,
+            Mode::Compose => self.mode = Mode::ComposeInit,
             _ => self.mode = Mode::Index,
         };
     }
