@@ -5,13 +5,14 @@ use ratatui::{
     widgets::{Paragraph, Row, StatefulWidget, Table, Widget, Wrap},
 };
 
-use crate::app::{App, Mode};
+use crate::app::{App, ComposeFocus, Mode};
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self.mode() {
             Mode::MessageTable => render_message_table(self, area, buf),
             Mode::Message(selected) => render_message(self, *selected, area, buf),
+            Mode::Compose(focus) => render_compose(self, focus, area, buf),
         };
     }
 }
@@ -47,6 +48,13 @@ fn render_message_table(app: &App, area: Rect, buf: &mut Buffer) {
 
 fn render_message(app: &App, selected: usize, area: Rect, buf: &mut Buffer) {
     let message = app.get_message(selected);
+    Paragraph::new(message)
+        .wrap(Wrap { trim: true })
+        .render(area, buf);
+}
+
+fn render_compose(app: &App, _: &ComposeFocus, area: Rect, buf: &mut Buffer) {
+    let message = format!("{:?}", app.mode());
     Paragraph::new(message)
         .wrap(Wrap { trim: true })
         .render(area, buf);

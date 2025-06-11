@@ -22,10 +22,25 @@ pub struct App {
     message_scroll_state: ScrollbarState,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum Mode {
+    #[default]
     MessageTable,
     Message(usize),
+    Compose(ComposeFocus),
+}
+
+#[derive(Debug)]
+pub enum ComposeFocus {
+    To(ComposeMode),
+    Subject(ComposeMode),
+    Message(ComposeMode),
+}
+
+#[derive(Debug)]
+pub enum ComposeMode {
+    Normal,
+    Editing,
 }
 
 impl Default for App {
@@ -79,9 +94,10 @@ impl App {
             return Ok(());
         }
 
-        match self.mode {
+        match &self.mode {
             Mode::MessageTable => match key_event.code {
                 KeyCode::Enter => self.view_message(),
+                KeyCode::Char('c') => self.compose_message(),
                 KeyCode::Char('j') | KeyCode::Down => self.next_message(),
                 KeyCode::Char('k') | KeyCode::Up => self.previous_message(),
                 KeyCode::Char('q') => self.events.send(AppEvent::Quit),
@@ -91,6 +107,44 @@ impl App {
                 KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
                 // TODO scroll
                 _ => {}
+            }
+            Mode::Compose(focus) => match focus {
+                ComposeFocus::To(compose_mode) => match compose_mode {
+                    ComposeMode::Normal => match key_event.code {
+                        KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
+                        KeyCode::Enter => self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Editing)),
+                        KeyCode::Tab => self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Normal)),
+                        _ => {},
+                    },
+                    ComposeMode::Editing => match key_event.code {
+                        KeyCode::Esc => self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal)),
+                        _ => {},
+                    },
+                }
+                ComposeFocus::Subject(compose_mode) => match compose_mode {
+                    ComposeMode::Normal => match key_event.code {
+                        KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
+                        KeyCode::Enter => self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Editing)),
+                        KeyCode::Tab => self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Normal)),
+                        _ => {},
+                    },
+                    ComposeMode::Editing => match key_event.code {
+                        KeyCode::Esc => self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Normal)),
+                        _ => {},
+                    },
+                }
+                ComposeFocus::Message(compose_mode) => match compose_mode {
+                    ComposeMode::Normal => match key_event.code {
+                        KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
+                        KeyCode::Enter => self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Editing)),
+                        KeyCode::Tab => self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal)),
+                        _ => {},
+                    },
+                    ComposeMode::Editing => match key_event.code {
+                        KeyCode::Esc => self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Normal)),
+                        _ => {},
+                    },
+                }
             }
         }
 
@@ -145,6 +199,10 @@ impl App {
         };
         state.select(Some(i));
         // self.message_scroll_state = self.message_scroll_state.position(i);
+    }
+
+    fn compose_message(&mut self) {
+        self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal));
     }
 
     pub fn get_message(&self, selected: usize) -> String {
