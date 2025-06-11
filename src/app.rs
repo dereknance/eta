@@ -10,8 +10,6 @@ use ratatui::{
 pub struct App {
     /// Is the application running?
     running: bool,
-    /// Counter.
-    counter: u8,
     /// Event handler.
     events: EventHandler,
     /// Current application mode.
@@ -26,21 +24,16 @@ pub struct App {
 
 #[derive(Debug)]
 pub enum Mode {
-    Index,
     MessageTable,
     Message(usize),
-    ComposeInit,
-    Compose,
-    Blank,
 }
 
 impl Default for App {
     fn default() -> Self {
         let mut app = Self {
             running: true,
-            counter: 0,
             events: EventHandler::new(),
-            mode: Mode::Index,
+            mode: Mode::MessageTable,
             messages: DefaultMessageProvider::new(),
             message_table_state: RefCell::new(TableState::default().with_selected(0)),
             message_scroll_state: ScrollbarState::default(),
@@ -69,8 +62,6 @@ impl App {
                     _ => {}
                 },
                 Event::App(app_event) => match app_event {
-                    AppEvent::Increment => self.increment_counter(),
-                    AppEvent::Decrement => self.decrement_counter(),
                     AppEvent::Quit => self.quit(),
                 },
             }
@@ -80,25 +71,29 @@ impl App {
 
     /// Handles the key events and updates the state of [`App`].
     pub fn handle_key_events(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
-        match key_event.code {
-            // Ctrl-C is the escape hatch to close the program
-            KeyCode::Char('c' | 'C') if key_event.modifiers == KeyModifiers::CONTROL => {
-                self.events.send(AppEvent::Quit)
-            }
-            // Mode-dependent keypresses
-            KeyCode::Enter => self.handle_enter_key(),
-            KeyCode::Esc => self.handle_esc_key(),
-            KeyCode::Char('b') => self.handle_b_key(),
-            KeyCode::Char('c') => self.handle_c_key(),
-            KeyCode::Char('j') => self.handle_j_key(),
-            KeyCode::Char('k') => self.handle_k_key(),
-            KeyCode::Char('m') => self.handle_m_key(),
-            KeyCode::Char('q') => self.handle_q_key(),
-            KeyCode::Right => self.events.send(AppEvent::Increment),
-            KeyCode::Left => self.events.send(AppEvent::Decrement),
-            // Other handlers you could add here.
-            _ => {}
+        // escape hatch
+        if key_event.modifiers == KeyModifiers::CONTROL
+            && key_event.code == KeyCode::Char('c')
+        {
+            self.events.send(AppEvent::Quit);
+            return Ok(());
         }
+
+        match self.mode {
+            Mode::MessageTable => match key_event.code {
+                KeyCode::Enter => self.view_message(),
+                KeyCode::Char('j') | KeyCode::Down => self.next_message(),
+                KeyCode::Char('k') | KeyCode::Up => self.previous_message(),
+                KeyCode::Char('q') => self.events.send(AppEvent::Quit),
+                _ => {}
+            }
+            Mode::Message(_) => match key_event.code {
+                KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
+                // TODO scroll
+                _ => {}
+            }
+        }
+
         Ok(())
     }
 
@@ -113,76 +108,11 @@ impl App {
         self.running = false;
     }
 
-    fn handle_b_key(&mut self) {
-        match self.mode {
-            Mode::Index => self.mode = Mode::Blank,
-            _ => ()
-        };
-    }
-
-    fn handle_c_key(&mut self) {
-        match self.mode {
-            Mode::Index => self.mode = Mode::ComposeInit,
-            Mode::ComposeInit => self.mode = Mode::Compose,
-            _ => ()
-        };
-    }
-
-    fn handle_m_key(&mut self) {
-        match self.mode {
-            // TODO this _may_ need to wind up asynchronously loading
-            // messages
-            Mode::Index => self.mode = Mode::MessageTable,
-            _ => ()
+    fn view_message(&mut self) {
+        match self.message_table_state.borrow().selected() {
+            Some(id) => self.mode = Mode::Message(id),
+            None => {}
         }
-    }
-
-    fn handle_enter_key(&mut self) {
-        match self.mode {
-            Mode::MessageTable => self.mode = Mode::Message(
-                self.message_table_state.borrow().selected().unwrap()),
-            _ => ()
-        }
-    }
-
-    fn handle_esc_key(&mut self) {
-        match self.mode {
-            Mode::Index => self.events.send(AppEvent::Quit),
-            Mode::Message(_) => self.mode = Mode::MessageTable,
-            Mode::Compose => self.mode = Mode::ComposeInit,
-            _ => self.mode = Mode::Index,
-        };
-    }
-
-    fn handle_q_key(&mut self) {
-        match self.mode {
-            Mode::Index => self.events.send(AppEvent::Quit),
-            Mode::Message(_) => self.mode = Mode::MessageTable,
-            Mode::Compose => self.mode = Mode::ComposeInit,
-            _ => self.mode = Mode::Index,
-        };
-    }
-
-    fn handle_j_key(&mut self) {
-        match self.mode {
-            Mode::MessageTable => self.next_message(),
-            _ => ()
-        }
-    }
-
-    fn handle_k_key(&mut self) {
-        match self.mode {
-            Mode::MessageTable => self.previous_message(),
-            _ => ()
-        }
-    }
-
-    fn increment_counter(&mut self) {
-        self.counter = self.counter.saturating_add(1);
-    }
-
-    fn decrement_counter(&mut self) {
-        self.counter = self.counter.saturating_sub(1);
     }
 
     fn next_message(&mut self) {
@@ -217,7 +147,7 @@ impl App {
         // self.message_scroll_state = self.message_scroll_state.position(i);
     }
 
-    pub fn view_message(&self, selected: usize) -> String {
+    pub fn get_message(&self, selected: usize) -> String {
         let mut message = String::from("Not found");
 
         for i in 0..self.messages.len() {
@@ -232,10 +162,6 @@ impl App {
         }
 
         message
-    }
-
-    pub fn counter(&self) -> u8 {
-        self.counter
     }
 
     pub fn mode(&self) -> &Mode {
