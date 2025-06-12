@@ -10,14 +10,7 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn new(
-        id: u64,
-        from: String,
-        to: String,
-        subject: String,
-        body: String
-    ) -> Self
-    {
+    pub fn new(id: u64, from: String, to: String, subject: String, body: String) -> Self {
         Message {
             id,
             from,
@@ -89,7 +82,8 @@ impl DefaultMessageProvider {
                     String::from("bob@bob.me"),
                     String::from("me@me.me"),
                     String::from("Hi"),
-                    String::from("Hello there")),
+                    String::from("Hello there"),
+                ),
                 Message::new(
                     2,
                     String::from("alice@alice.me"),
@@ -97,7 +91,9 @@ impl DefaultMessageProvider {
                     String::from("TPS Reports"),
                     String::from(
                         "So uhh...if you could just get those done\n\
-                        yeahh....that'd be greaaaat.")),
+                        yeahh....that'd be greaaaat.",
+                    ),
+                ),
                 Message::new(
                     3,
                     String::from("derek@dcn.dev"),
@@ -124,8 +120,10 @@ impl DefaultMessageProvider {
                            nesciunt. Neque porro quisquam est, qui dolorem \
                            ipsum quia dolor sit amet, consectetur, adipisci \
                            velit.\n\
-                        ")),
-            ]
+                        ",
+                    ),
+                ),
+            ],
         }
     }
 }

@@ -1,13 +1,21 @@
 use std::{cell::RefCell, io};
 
-use crate::{event::{AppEvent, Event, EventHandler}, message::{DefaultMessageProvider, Message, MessageProvider}};
-use ratatui::{
-    crossterm::event::{KeyCode, KeyEvent, KeyModifiers}, widgets::{ScrollbarState, TableState}, DefaultTerminal
+use crate::{
+    event::{AppEvent, Event, EventHandler},
+    message::{DefaultMessageProvider, Message, MessageProvider},
+    ui,
 };
+use ratatui::{
+    DefaultTerminal,
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
+    style::Style,
+    widgets::{Block, Borders, ScrollbarState, TableState},
+};
+use tui_textarea::TextArea;
 
 /// Application.
 #[derive(Debug)]
-pub struct App {
+pub struct App<'a> {
     /// Is the application running?
     running: bool,
     /// Event handler.
@@ -20,6 +28,7 @@ pub struct App {
     message_table_state: RefCell<TableState>,
     /// Message table scrollbar state.
     message_scroll_state: ScrollbarState,
+    compose_message_input: TextArea<'a>,
 }
 
 #[derive(Debug, Default)]
@@ -43,7 +52,7 @@ pub enum ComposeMode {
     Editing,
 }
 
-impl Default for App {
+impl Default for App<'_> {
     fn default() -> Self {
         let mut app = Self {
             running: true,
@@ -52,13 +61,18 @@ impl Default for App {
             messages: DefaultMessageProvider::new(),
             message_table_state: RefCell::new(TableState::default().with_selected(0)),
             message_scroll_state: ScrollbarState::default(),
+            compose_message_input: TextArea::default(),
         };
         app.message_scroll_state = ScrollbarState::new(app.messages.len() - 1);
+        app.compose_message_input
+            .set_cursor_line_style(Style::default());
+        app.compose_message_input
+            .set_block(Block::default().borders(Borders::ALL).title("Message"));
         app
     }
 }
 
-impl App {
+impl App<'_> {
     /// Constructs a new instance of [`App`].
     pub fn new() -> Self {
         Self::default()
@@ -67,13 +81,11 @@ impl App {
     /// Run the application's main loop.
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         while self.running {
-            terminal.draw(|frame|
-                frame.render_widget(&self, frame.area()))?;
+            terminal.draw(|frame| ui::draw(&self, frame))?;
             match self.events.next().await? {
                 Event::Tick => self.tick(),
                 Event::Crossterm(event) => match event {
-                    crossterm::event::Event::Key(key_event) =>
-                        self.handle_key_events(key_event)?,
+                    crossterm::event::Event::Key(key_event) => self.handle_key_events(key_event)?,
                     _ => {}
                 },
                 Event::App(app_event) => match app_event {
@@ -87,9 +99,7 @@ impl App {
     /// Handles the key events and updates the state of [`App`].
     pub fn handle_key_events(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
         // escape hatch
-        if key_event.modifiers == KeyModifiers::CONTROL
-            && key_event.code == KeyCode::Char('c')
-        {
+        if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('c') {
             self.events.send(AppEvent::Quit);
             return Ok(());
         }
@@ -102,50 +112,71 @@ impl App {
                 KeyCode::Char('k') | KeyCode::Up => self.previous_message(),
                 KeyCode::Char('q') => self.events.send(AppEvent::Quit),
                 _ => {}
-            }
+            },
             Mode::Message(_) => match key_event.code {
                 KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
                 // TODO scroll
                 _ => {}
-            }
+            },
             Mode::Compose(focus) => match focus {
                 ComposeFocus::To(compose_mode) => match compose_mode {
                     ComposeMode::Normal => match key_event.code {
                         KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
-                        KeyCode::Enter => self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Editing)),
-                        KeyCode::Tab => self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Normal)),
-                        _ => {},
+                        KeyCode::Enter => {
+                            self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Editing))
+                        }
+                        KeyCode::Tab => {
+                            self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Normal))
+                        }
+                        _ => {}
                     },
                     ComposeMode::Editing => match key_event.code {
-                        KeyCode::Esc => self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal)),
-                        _ => {},
+                        KeyCode::Esc => {
+                            self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal))
+                        }
+                        _ => {} // pass these events to the input field
                     },
-                }
+                },
                 ComposeFocus::Subject(compose_mode) => match compose_mode {
                     ComposeMode::Normal => match key_event.code {
                         KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
-                        KeyCode::Enter => self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Editing)),
-                        KeyCode::Tab => self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Normal)),
-                        _ => {},
+                        KeyCode::Enter => {
+                            self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Editing))
+                        }
+                        KeyCode::Tab => {
+                            self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Normal))
+                        }
+                        _ => {}
                     },
                     ComposeMode::Editing => match key_event.code {
-                        KeyCode::Esc => self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Normal)),
-                        _ => {},
+                        KeyCode::Esc => {
+                            self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Normal))
+                        }
+                        _ => {} // pass these events to the input field
                     },
-                }
+                },
                 ComposeFocus::Message(compose_mode) => match compose_mode {
                     ComposeMode::Normal => match key_event.code {
                         KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
-                        KeyCode::Enter => self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Editing)),
-                        KeyCode::Tab => self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal)),
-                        _ => {},
+                        KeyCode::Enter => {
+                            self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Editing))
+                        }
+                        KeyCode::Tab => {
+                            self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal))
+                        }
+                        _ => {}
                     },
                     ComposeMode::Editing => match key_event.code {
-                        KeyCode::Esc => self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Normal)),
-                        _ => {},
+                        KeyCode::Esc => {
+                            self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Normal))
+                        }
+                        _ => {
+                            self.compose_message_input
+                                .input_without_shortcuts(key_event);
+                        }
                     },
-                }
-            }
+                },
+            },
         }
 
         Ok(())
@@ -210,12 +241,7 @@ impl App {
 
         for i in 0..self.messages.len() {
             if i == selected {
-                message = self.messages()
-                    .unwrap()
-                    .get(i)
-                    .unwrap()
-                    .body()
-                    .into();
+                message = self.messages().unwrap().get(i).unwrap().body().into();
             }
         }
 
@@ -232,5 +258,13 @@ impl App {
 
     pub fn message_table_state(&self) -> &RefCell<TableState> {
         &self.message_table_state
+    }
+
+    pub fn compose_message_text(&self) -> String {
+        self.compose_message_input.lines().join("\n")
+    }
+
+    pub fn compose_message_input(&self) -> &TextArea {
+        &self.compose_message_input
     }
 }
