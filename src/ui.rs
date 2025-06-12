@@ -1,22 +1,21 @@
 use ratatui::{
-    Frame,
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
     style::{Style, Stylize},
-    widgets::{Paragraph, Row, StatefulWidget, Table, Widget, Wrap},
+    text::Line,
+    widgets::{Block, Borders, Paragraph, Row, StatefulWidget, Table, Widget, Wrap},
 };
 
-use crate::app::{App, ComposeFocus, Mode};
+use crate::app::{App, ComposeFocus, ComposeMode, Mode};
 
-pub fn draw(app: &App, frame: &mut Frame) {
-    // frame.render_widget(app, frame.area());
-    let area = frame.area();
-    let buf = frame.buffer_mut();
-    match app.mode() {
-        Mode::MessageTable => render_message_table(app, area, buf),
-        Mode::Message(selected) => render_message(app, *selected, area, buf),
-        Mode::Compose(focus) => render_compose(app, focus, area, buf),
-    };
+impl Widget for &App<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        match self.mode() {
+            Mode::MessageTable => render_message_table(self, area, buf),
+            Mode::Message(selected) => render_message(self, *selected, area, buf),
+            Mode::Compose(focus) => render_compose(self, focus, area, buf),
+        };
+    }
 }
 
 fn render_message_table(app: &App, area: Rect, buf: &mut Buffer) {
@@ -54,9 +53,41 @@ fn render_message(app: &App, selected: usize, area: Rect, buf: &mut Buffer) {
         .render(area, buf);
 }
 
-fn render_compose(app: &App, _: &ComposeFocus, area: Rect, buf: &mut Buffer) {
-    let [mode_area, message_area] =
-        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
-    Paragraph::new(format!("{:?}", app.mode())).render(mode_area, buf);
-    app.compose_message_input().render(message_area, buf);
+fn render_compose(app: &App, focus: &ComposeFocus, area: Rect, buf: &mut Buffer) {
+    let [to_area, subject_area, message_area, keybind_area] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ])
+    .areas(area);
+    let paragraph = Paragraph::new(format!("{:?}", app.mode()));
+    let mut message = app.compose_message_input().borrow_mut();
+    let subject = Paragraph::new("Subject . . .");
+    let keybinds = match focus {
+        ComposeFocus::Message(ComposeMode::Editing) => Line::from("Esc: Stop editing"),
+        _ => Line::from("q: Back Tab: Next field Enter: Select field"),
+    };
+
+    let default_style = Style::default();
+    let reversed_style = default_style.reversed();
+    message.set_cursor_line_style(default_style);
+    message.set_block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Message ")
+            .title_style(match focus {
+                ComposeFocus::Message(ComposeMode::Normal) => reversed_style,
+                _ => default_style,
+            }),
+    );
+    message.set_cursor_style(match focus {
+        ComposeFocus::Message(ComposeMode::Editing) => reversed_style,
+        _ => default_style, // hide cursor
+    });
+
+    paragraph.render(to_area, buf);
+    subject.render(subject_area, buf);
+    message.render(message_area, buf);
+    keybinds.render(keybind_area, buf);
 }

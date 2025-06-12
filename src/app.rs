@@ -3,13 +3,11 @@ use std::{cell::RefCell, io};
 use crate::{
     event::{AppEvent, Event, EventHandler},
     message::{DefaultMessageProvider, Message, MessageProvider},
-    ui,
 };
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
-    style::Style,
-    widgets::{Block, Borders, ScrollbarState, TableState},
+    widgets::{ScrollbarState, TableState},
 };
 use tui_textarea::TextArea;
 
@@ -28,7 +26,7 @@ pub struct App<'a> {
     message_table_state: RefCell<TableState>,
     /// Message table scrollbar state.
     message_scroll_state: ScrollbarState,
-    compose_message_input: TextArea<'a>,
+    compose_message_input: RefCell<TextArea<'a>>,
 }
 
 #[derive(Debug, Default)]
@@ -52,7 +50,7 @@ pub enum ComposeMode {
     Editing,
 }
 
-impl Default for App<'_> {
+impl<'a> Default for App<'a> {
     fn default() -> Self {
         let mut app = Self {
             running: true,
@@ -61,18 +59,15 @@ impl Default for App<'_> {
             messages: DefaultMessageProvider::new(),
             message_table_state: RefCell::new(TableState::default().with_selected(0)),
             message_scroll_state: ScrollbarState::default(),
-            compose_message_input: TextArea::default(),
+            compose_message_input: RefCell::new(TextArea::default()),
         };
         app.message_scroll_state = ScrollbarState::new(app.messages.len() - 1);
-        app.compose_message_input
-            .set_cursor_line_style(Style::default());
-        app.compose_message_input
-            .set_block(Block::default().borders(Borders::ALL).title("Message"));
+
         app
     }
 }
 
-impl App<'_> {
+impl<'a> App<'a> {
     /// Constructs a new instance of [`App`].
     pub fn new() -> Self {
         Self::default()
@@ -81,7 +76,7 @@ impl App<'_> {
     /// Run the application's main loop.
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         while self.running {
-            terminal.draw(|frame| ui::draw(&self, frame))?;
+            terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;
             match self.events.next().await? {
                 Event::Tick => self.tick(),
                 Event::Crossterm(event) => match event {
@@ -172,6 +167,7 @@ impl App<'_> {
                         }
                         _ => {
                             self.compose_message_input
+                                .get_mut()
                                 .input_without_shortcuts(key_event);
                         }
                     },
@@ -261,10 +257,10 @@ impl App<'_> {
     }
 
     pub fn compose_message_text(&self) -> String {
-        self.compose_message_input.lines().join("\n")
+        self.compose_message_input.borrow().lines().join("\n")
     }
 
-    pub fn compose_message_input(&self) -> &TextArea {
+    pub fn compose_message_input(&self) -> &RefCell<TextArea<'a>> {
         &self.compose_message_input
     }
 }
