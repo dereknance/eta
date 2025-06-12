@@ -31,6 +31,8 @@ pub enum Event {
 /// You can extend this enum with your own custom events.
 #[derive(Clone, Debug)]
 pub enum AppEvent {
+    /// Send a message to an SMTP server
+    SendMessage,
     /// Quit the application.
     Quit,
 }

@@ -88,6 +88,7 @@ impl<'a> App<'a> {
                     _ => {}
                 },
                 Event::App(app_event) => match app_event {
+                    AppEvent::SendMessage => self.send_message(),
                     AppEvent::Quit => self.quit(),
                 },
             }
@@ -133,7 +134,9 @@ impl<'a> App<'a> {
                         KeyCode::Esc => {
                             self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal))
                         }
-                        KeyCode::Enter => {}
+                        KeyCode::Enter | KeyCode::Tab => {
+                            self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Normal))
+                        }
                         _ => {
                             self.compose_to_input
                                 .get_mut()
@@ -156,7 +159,9 @@ impl<'a> App<'a> {
                         KeyCode::Esc => {
                             self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Normal))
                         }
-                        KeyCode::Enter => {}
+                        KeyCode::Enter | KeyCode::Tab => {
+                            self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Normal))
+                        }
                         _ => {
                             self.compose_subject_input
                                 .get_mut()
@@ -167,6 +172,10 @@ impl<'a> App<'a> {
                 ComposeFocus::Message(compose_mode) => match compose_mode {
                     ComposeMode::Normal => match key_event.code {
                         KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
+                        KeyCode::Char('S') => {
+                            // send an app event to send the message!
+                            self.events.send(AppEvent::SendMessage);
+                        }
                         KeyCode::Enter => {
                             self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Editing))
                         }
@@ -209,6 +218,19 @@ impl<'a> App<'a> {
     /// The tick event is where you can update the state of your application with any logic that
     /// needs to be updated at a fixed frame rate. E.g. polling a server, updating an animation.
     fn tick(&self) {}
+
+    fn send_message(&mut self) {
+        // TODO async transmit to an SMTP server -- read connection details from config
+
+        // Reset state of compose fields
+        self.compose_to_input = RefCell::new(TextArea::default());
+        self.compose_subject_input = RefCell::new(TextArea::default());
+        self.compose_message_input = RefCell::new(TextArea::default());
+
+        // return to message table
+        // TODO show a message until keypress in status bar
+        self.mode = Mode::MessageTable
+    }
 
     /// Set running to false to quit the application.
     fn quit(&mut self) {
