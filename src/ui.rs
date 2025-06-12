@@ -54,23 +54,48 @@ fn render_message(app: &App, selected: usize, area: Rect, buf: &mut Buffer) {
 }
 
 fn render_compose(app: &App, focus: &ComposeFocus, area: Rect, buf: &mut Buffer) {
-    let [to_area, subject_area, message_area, keybind_area] = Layout::vertical([
+    let default_style = Style::default();
+    let reversed_style = default_style.reversed();
+
+    let layout = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(1),
-    ])
-    .areas(area);
-    let paragraph = Paragraph::new(format!("{:?}", app.mode()));
+    ]);
+    let [to_area, subject_area, message_area, keybind_area] = layout.areas(area);
+
+    let to_layout = Layout::horizontal([Constraint::Length(9), Constraint::Max(71)]);
+    let [to_label_area, to_input_area] = to_layout.areas(to_area);
+    let subject_layout = Layout::horizontal([Constraint::Length(9), Constraint::Max(71)]);
+    let [subject_label_area, subject_input_area] = subject_layout.areas(subject_area);
+
+    let to_label = Line::from("To: ").right_aligned().style(match focus {
+        ComposeFocus::To(ComposeMode::Normal) => reversed_style,
+        _ => default_style, // hide cursor
+    });
+    let mut to_input = app.compose_to_input().borrow_mut();
+    let subject_label = Line::from("Subject: ").right_aligned().style(match focus {
+        ComposeFocus::Subject(ComposeMode::Normal) => reversed_style,
+        _ => default_style, // hide cursor
+    });
+    let mut subject_input = app.compose_subject_input().borrow_mut();
     let mut message = app.compose_message_input().borrow_mut();
-    let subject = Paragraph::new("Subject . . .");
     let keybinds = match focus {
         ComposeFocus::Message(ComposeMode::Editing) => Line::from("Esc: Stop editing"),
         _ => Line::from("q: Back Tab: Next field Enter: Select field"),
     };
 
-    let default_style = Style::default();
-    let reversed_style = default_style.reversed();
+    to_input.set_cursor_line_style(default_style);
+    to_input.set_cursor_style(match focus {
+        ComposeFocus::To(ComposeMode::Editing) => reversed_style,
+        _ => default_style, // hide cursor
+    });
+    subject_input.set_cursor_line_style(default_style);
+    subject_input.set_cursor_style(match focus {
+        ComposeFocus::Subject(ComposeMode::Editing) => reversed_style,
+        _ => default_style, // hide cursor
+    });
     message.set_cursor_line_style(default_style);
     message.set_block(
         Block::default()
@@ -86,8 +111,10 @@ fn render_compose(app: &App, focus: &ComposeFocus, area: Rect, buf: &mut Buffer)
         _ => default_style, // hide cursor
     });
 
-    paragraph.render(to_area, buf);
-    subject.render(subject_area, buf);
+    to_label.render(to_label_area, buf);
+    to_input.render(to_input_area, buf);
+    subject_label.render(subject_label_area, buf);
+    subject_input.render(subject_input_area, buf);
     message.render(message_area, buf);
     keybinds.render(keybind_area, buf);
 }

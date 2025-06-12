@@ -9,7 +9,7 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     widgets::{ScrollbarState, TableState},
 };
-use tui_textarea::TextArea;
+use tui_textarea::{CursorMove, Scrolling, TextArea};
 
 /// Application.
 #[derive(Debug)]
@@ -27,6 +27,8 @@ pub struct App<'a> {
     /// Message table scrollbar state.
     message_scroll_state: ScrollbarState,
     compose_message_input: RefCell<TextArea<'a>>,
+    compose_to_input: RefCell<TextArea<'a>>,
+    compose_subject_input: RefCell<TextArea<'a>>,
 }
 
 #[derive(Debug, Default)]
@@ -60,6 +62,8 @@ impl<'a> Default for App<'a> {
             message_table_state: RefCell::new(TableState::default().with_selected(0)),
             message_scroll_state: ScrollbarState::default(),
             compose_message_input: RefCell::new(TextArea::default()),
+            compose_to_input: RefCell::new(TextArea::default()),
+            compose_subject_input: RefCell::new(TextArea::default()),
         };
         app.message_scroll_state = ScrollbarState::new(app.messages.len() - 1);
 
@@ -129,7 +133,12 @@ impl<'a> App<'a> {
                         KeyCode::Esc => {
                             self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal))
                         }
-                        _ => {} // pass these events to the input field
+                        KeyCode::Enter => {}
+                        _ => {
+                            self.compose_to_input
+                                .get_mut()
+                                .input_without_shortcuts(key_event);
+                        }
                     },
                 },
                 ComposeFocus::Subject(compose_mode) => match compose_mode {
@@ -147,7 +156,12 @@ impl<'a> App<'a> {
                         KeyCode::Esc => {
                             self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Normal))
                         }
-                        _ => {} // pass these events to the input field
+                        KeyCode::Enter => {}
+                        _ => {
+                            self.compose_subject_input
+                                .get_mut()
+                                .input_without_shortcuts(key_event);
+                        }
                     },
                 },
                 ComposeFocus::Message(compose_mode) => match compose_mode {
@@ -159,11 +173,23 @@ impl<'a> App<'a> {
                         KeyCode::Tab => {
                             self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal))
                         }
+                        KeyCode::Up => {
+                            self.compose_message_input.get_mut().scroll(Scrolling::HalfPageUp);
+                        }
+                        KeyCode::Down => {
+                            self.compose_message_input.get_mut().scroll(Scrolling::HalfPageDown);
+                        }
                         _ => {}
                     },
                     ComposeMode::Editing => match key_event.code {
                         KeyCode::Esc => {
                             self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Normal))
+                        }
+                        KeyCode::Up => {
+                            self.compose_message_input.get_mut().move_cursor(CursorMove::Up);
+                        }
+                        KeyCode::Down => {
+                            self.compose_message_input.get_mut().move_cursor(CursorMove::Down);
                         }
                         _ => {
                             self.compose_message_input
@@ -262,5 +288,13 @@ impl<'a> App<'a> {
 
     pub fn compose_message_input(&self) -> &RefCell<TextArea<'a>> {
         &self.compose_message_input
+    }
+
+    pub fn compose_to_input(&self) -> &RefCell<TextArea<'a>> {
+        &self.compose_to_input
+    }
+
+    pub fn compose_subject_input(&self) -> &RefCell<TextArea<'a>> {
+        &self.compose_subject_input
     }
 }
