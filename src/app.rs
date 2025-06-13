@@ -31,12 +31,23 @@ pub struct App<'a> {
     compose_subject_input: RefCell<TextArea<'a>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub enum Mode {
-    #[default]
-    MessageTable,
+    MessageTable(MessageTableMode),
     Message(usize),
     Compose(ComposeFocus),
+}
+
+#[derive(Debug)]
+pub enum MessageTableMode {
+    Normal,
+    MessageSent(MessageSentStatus)
+}
+
+#[derive(Debug)]
+pub enum MessageSentStatus {
+    Success,
+    Failed(String)
 }
 
 #[derive(Debug)]
@@ -57,7 +68,7 @@ impl<'a> Default for App<'a> {
         let mut app = Self {
             running: true,
             events: EventHandler::new(),
-            mode: Mode::MessageTable,
+            mode: Mode::MessageTable(MessageTableMode::Normal),
             messages: DefaultMessageProvider::new(),
             message_table_state: RefCell::new(TableState::default().with_selected(0)),
             message_scroll_state: ScrollbarState::default(),
@@ -105,23 +116,23 @@ impl<'a> App<'a> {
         }
 
         match &self.mode {
-            Mode::MessageTable => match key_event.code {
+            Mode::MessageTable(_) => match key_event.code {
                 KeyCode::Enter => self.view_message(),
                 KeyCode::Char('c') => self.compose_message(),
                 KeyCode::Char('j') | KeyCode::Down => self.next_message(),
                 KeyCode::Char('k') | KeyCode::Up => self.previous_message(),
                 KeyCode::Char('q') => self.events.send(AppEvent::Quit),
                 _ => {}
-            },
+            }
             Mode::Message(_) => match key_event.code {
-                KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
+                KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable(MessageTableMode::Normal),
                 // TODO scroll
                 _ => {}
-            },
+            }
             Mode::Compose(focus) => match focus {
                 ComposeFocus::To(compose_mode) => match compose_mode {
                     ComposeMode::Normal => match key_event.code {
-                        KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
+                        KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable(MessageTableMode::Normal),
                         KeyCode::Enter => {
                             self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Editing))
                         }
@@ -146,7 +157,7 @@ impl<'a> App<'a> {
                 },
                 ComposeFocus::Subject(compose_mode) => match compose_mode {
                     ComposeMode::Normal => match key_event.code {
-                        KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
+                        KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable(MessageTableMode::Normal),
                         KeyCode::Enter => {
                             self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Editing))
                         }
@@ -168,10 +179,10 @@ impl<'a> App<'a> {
                                 .input_without_shortcuts(key_event);
                         }
                     },
-                },
+                }
                 ComposeFocus::Message(compose_mode) => match compose_mode {
                     ComposeMode::Normal => match key_event.code {
-                        KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable,
+                        KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::MessageTable(MessageTableMode::Normal),
                         KeyCode::Char('S') => {
                             // send an app event to send the message!
                             self.events.send(AppEvent::SendMessage);
@@ -189,7 +200,7 @@ impl<'a> App<'a> {
                             self.compose_message_input.get_mut().scroll(Scrolling::HalfPageDown);
                         }
                         _ => {}
-                    },
+                    }
                     ComposeMode::Editing => match key_event.code {
                         KeyCode::Esc => {
                             self.mode = Mode::Compose(ComposeFocus::Message(ComposeMode::Normal))
@@ -205,9 +216,9 @@ impl<'a> App<'a> {
                                 .get_mut()
                                 .input_without_shortcuts(key_event);
                         }
-                    },
-                },
-            },
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -228,8 +239,7 @@ impl<'a> App<'a> {
         self.compose_message_input = RefCell::new(TextArea::default());
 
         // return to message table
-        // TODO show a message until keypress in status bar
-        self.mode = Mode::MessageTable
+        self.mode = Mode::MessageTable(MessageTableMode::MessageSent(MessageSentStatus::Success));
     }
 
     /// Set running to false to quit the application.
@@ -257,7 +267,9 @@ impl<'a> App<'a> {
             None => 0,
         };
         state.select(Some(i));
-        // self.message_scroll_state = self.message_scroll_state.position(i);
+        
+        // clear any status messages
+        self.mode = Mode::MessageTable(MessageTableMode::Normal)
     }
 
     fn previous_message(&mut self) {
@@ -273,7 +285,9 @@ impl<'a> App<'a> {
             None => 0,
         };
         state.select(Some(i));
-        // self.message_scroll_state = self.message_scroll_state.position(i);
+
+        // clear any status messages
+        self.mode = Mode::MessageTable(MessageTableMode::Normal)
     }
 
     fn compose_message(&mut self) {

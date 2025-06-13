@@ -6,19 +6,26 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Row, StatefulWidget, Table, Widget, Wrap},
 };
 
-use crate::app::{App, ComposeFocus, ComposeMode, Mode};
+use crate::app::{App, ComposeFocus, ComposeMode, MessageTableMode, Mode};
 
 impl Widget for &App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self.mode() {
-            Mode::MessageTable => render_message_table(self, area, buf),
+            Mode::MessageTable(mode) => render_message_table(self, mode, area, buf),
             Mode::Message(selected) => render_message(self, *selected, area, buf),
             Mode::Compose(focus) => render_compose(self, focus, area, buf),
         };
     }
 }
 
-fn render_message_table(app: &App, area: Rect, buf: &mut Buffer) {
+fn render_message_table(app: &App, mode: &MessageTableMode, area: Rect, buf: &mut Buffer) {
+    let layout = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(1),
+    ]);
+    let [table_area, status_bar_area] = layout.areas(area);
+    let status_bar_layout = Layout::horizontal([Constraint::Fill(2), Constraint::Fill(1)]);
+    let [keybinds_area, status_area] = status_bar_layout.areas(status_bar_area);
     let mut table_state = app.message_table_state().borrow_mut();
     let rows = app
         .messages()
@@ -34,7 +41,7 @@ fn render_message_table(app: &App, area: Rect, buf: &mut Buffer) {
         .collect::<Vec<Row>>();
     let widths = [
         Constraint::Length(5),
-        Constraint::Length(10),
+        Constraint::Length(25),
         Constraint::Length(50),
     ];
     let table = Table::new(rows, widths)
@@ -43,7 +50,26 @@ fn render_message_table(app: &App, area: Rect, buf: &mut Buffer) {
         .header(Row::new(vec!["ID", "From", "Subject"]).style(Style::new().bold()))
         .row_highlight_style(Style::new().reversed());
 
-    StatefulWidget::render(table, area, buf, &mut *table_state);
+    let status_text = match mode {
+        MessageTableMode::Normal => String::from(""),
+        MessageTableMode::MessageSent(status) => match status {
+            crate::app::MessageSentStatus::Success => String::from(" Message sent"),
+            crate::app::MessageSentStatus::Failed(e) => format!(" Error: {e}"),
+        }
+    };
+    let status_text_len = status_text.len();
+
+    let keybinds = Paragraph::new(" -- keybinds here -- ");
+    let status = Paragraph::new(status_text)
+        .style(if status_text_len == 0 {
+            Style::default()
+        } else {
+            Style::default().reversed()
+        });
+
+    StatefulWidget::render(table, table_area, buf, &mut *table_state);
+    keybinds.render(keybinds_area, buf);
+    status.render(status_area, buf);
 }
 
 fn render_message(app: &App, selected: usize, area: Rect, buf: &mut Buffer) {
