@@ -19,12 +19,23 @@ impl Widget for &App<'_> {
 }
 
 fn render_message_table(app: &App, mode: &MessageTableMode, area: Rect, buf: &mut Buffer) {
+    let keybinds_text = " j:Up  k:Down  Enter:View  c:Compose ";
+    let keybinds_text_len = keybinds_text.len() as u16;
+    let status_text = match mode {
+        MessageTableMode::Normal => String::from(""),
+        MessageTableMode::MessageSent(status) => match status {
+            crate::app::MessageSentStatus::Success => String::from(" Message sent "),
+            crate::app::MessageSentStatus::Failed(e) => format!(" Error: {e}"),
+        }
+    };
+    let status_text_len = status_text.len() as u16;
+
     let layout = Layout::vertical([
         Constraint::Fill(1),
         Constraint::Length(1),
     ]);
     let [table_area, status_bar_area] = layout.areas(area);
-    let status_bar_layout = Layout::horizontal([Constraint::Fill(2), Constraint::Fill(1)]);
+    let status_bar_layout = Layout::horizontal([Constraint::Max(keybinds_text_len + 10), Constraint::Max(status_text_len as u16)]);
     let [keybinds_area, status_area] = status_bar_layout.areas(status_bar_area);
     let mut table_state = app.message_table_state().borrow_mut();
     let rows = app
@@ -50,16 +61,7 @@ fn render_message_table(app: &App, mode: &MessageTableMode, area: Rect, buf: &mu
         .header(Row::new(vec!["ID", "From", "Subject"]).style(Style::new().bold()))
         .row_highlight_style(Style::new().reversed());
 
-    let status_text = match mode {
-        MessageTableMode::Normal => String::from(""),
-        MessageTableMode::MessageSent(status) => match status {
-            crate::app::MessageSentStatus::Success => String::from(" Message sent"),
-            crate::app::MessageSentStatus::Failed(e) => format!(" Error: {e}"),
-        }
-    };
-    let status_text_len = status_text.len();
-
-    let keybinds = Paragraph::new(" -- keybinds here -- ");
+    let keybinds = Paragraph::new(keybinds_text);
     let status = Paragraph::new(status_text)
         .style(if status_text_len == 0 {
             Style::default()
