@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Style, Stylize},
     text::Line,
-    widgets::{Block, Borders, Paragraph, Row, StatefulWidget, Table, Widget, Wrap},
+    widgets::{Block, Borders, Paragraph, Row, StatefulWidget, Table, Widget},
 };
 
 use crate::app::{App, ComposeFocus, ComposeMode, MessageTableMode, Mode};
@@ -12,14 +12,14 @@ impl Widget for &App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self.mode() {
             Mode::MessageTable(mode) => render_message_table(self, mode, area, buf),
-            Mode::Message(selected) => render_message(self, *selected, area, buf),
+            Mode::Message(_) => render_message(self, area, buf),
             Mode::Compose(focus) => render_compose(self, focus, area, buf),
         };
     }
 }
 
 fn render_message_table(app: &App, mode: &MessageTableMode, area: Rect, buf: &mut Buffer) {
-    let keybinds_text = " j:Up  k:Down  Enter:View  c:Compose ";
+    let keybinds_text = "  q:Quit  j:Down  k:Up  Enter:View  c:Compose  ";
     let keybinds_text_len = keybinds_text.len() as u16;
     let status_text = match mode {
         MessageTableMode::Normal => String::from(""),
@@ -73,11 +73,21 @@ fn render_message_table(app: &App, mode: &MessageTableMode, area: Rect, buf: &mu
     status.render(status_area, buf);
 }
 
-fn render_message(app: &App, selected: usize, area: Rect, buf: &mut Buffer) {
-    let message = app.get_message(selected);
-    Paragraph::new(message)
-        .wrap(Wrap { trim: true })
-        .render(area, buf);
+fn render_message(app: &App, area: Rect, buf: &mut Buffer) {
+    let default_style = Style::default();
+
+    let keybinds_text = "  q:Quit  j:Down  k:Up  h:Left  l:Right  ";
+
+    let layout = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]);
+    let [message_area, keybinds_area] = layout.areas(area);
+
+    let mut textarea = app.message_textarea().borrow_mut();
+
+    textarea.set_cursor_line_style(default_style);
+    textarea.set_cursor_style(default_style);
+
+    textarea.render(message_area, buf);
+    Paragraph::new(keybinds_text).render(keybinds_area, buf);
 }
 
 fn render_compose(app: &App, focus: &ComposeFocus, area: Rect, buf: &mut Buffer) {

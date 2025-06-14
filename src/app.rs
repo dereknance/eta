@@ -29,6 +29,8 @@ pub struct App<'a> {
     compose_message_input: RefCell<TextArea<'a>>,
     compose_to_input: RefCell<TextArea<'a>>,
     compose_subject_input: RefCell<TextArea<'a>>,
+    message_textarea: RefCell<TextArea<'a>>,
+    current_message: Box<Message>,
 }
 
 #[derive(Debug)]
@@ -75,6 +77,8 @@ impl<'a> Default for App<'a> {
             compose_message_input: RefCell::new(TextArea::default()),
             compose_to_input: RefCell::new(TextArea::default()),
             compose_subject_input: RefCell::new(TextArea::default()),
+            message_textarea: RefCell::new(TextArea::default()),
+            current_message: Box::new(Message::default()),
         };
         app.message_scroll_state = ScrollbarState::new(app.messages.len() - 1);
 
@@ -128,7 +132,26 @@ impl<'a> App<'a> {
                 KeyCode::Esc | KeyCode::Char('q') => {
                     self.mode = Mode::MessageTable(MessageTableMode::Normal)
                 }
-                // TODO scroll
+                KeyCode::Up | KeyCode::PageUp | KeyCode::Char('k') => {
+                    self.message_textarea
+                        .get_mut()
+                        .scroll(Scrolling::HalfPageUp);
+                }
+                KeyCode::Down | KeyCode::PageDown | KeyCode::Char('j') => {
+                    self.message_textarea
+                        .get_mut()
+                        .scroll(Scrolling::HalfPageDown);
+                }
+                KeyCode::Left | KeyCode::Char('h') => {
+                    self.message_textarea
+                        .get_mut()
+                        .scroll((0, -40));
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    self.message_textarea
+                        .get_mut()
+                        .scroll((0, 40));
+                }
                 _ => {}
             },
             Mode::Compose(focus) => match focus {
@@ -192,7 +215,6 @@ impl<'a> App<'a> {
                             self.mode = Mode::MessageTable(MessageTableMode::Normal)
                         }
                         KeyCode::Char('S') => {
-                            // send an app event to send the message!
                             self.events.send(AppEvent::SendMessage);
                         }
                         KeyCode::Enter => {
@@ -264,10 +286,31 @@ impl<'a> App<'a> {
     }
 
     fn view_message(&mut self) {
+        self.message_textarea = RefCell::new(TextArea::default());
+
         match self.message_table_state.borrow().selected() {
-            Some(id) => self.mode = Mode::Message(id),
+            Some(id) => {
+                if (id + 1) as u64 != self.current_message.id() {
+                    self.current_message = Box::new(
+                        self.messages
+                            .get_message(id as u64)
+                            .expect("failed to get message")
+                            .clone(),
+                    )
+                }
+                self.mode = Mode::Message(id)
+            }
             None => {}
         }
+
+        let message = &self.current_message;
+        self.message_textarea.get_mut().insert_str(format!(
+            "From: {}\nTo: {}\nSubject: {}\n\n{}",
+            message.from(),
+            message.to(),
+            message.subject(),
+            message.body()
+        ));
     }
 
     fn next_message(&mut self) {
@@ -327,7 +370,7 @@ impl<'a> App<'a> {
     }
 
     pub fn messages(&self) -> Result<&Vec<Message>, io::Error> {
-        self.messages.get()
+        self.messages.get_messages()
     }
 
     pub fn message_table_state(&self) -> &RefCell<TableState> {
@@ -348,5 +391,13 @@ impl<'a> App<'a> {
 
     pub fn compose_subject_input(&self) -> &RefCell<TextArea<'a>> {
         &self.compose_subject_input
+    }
+
+    pub fn message_textarea(&self) -> &RefCell<TextArea<'a>> {
+        &self.message_textarea
+    }
+
+    pub fn current_message(&self) -> &Message {
+        &self.current_message
     }
 }

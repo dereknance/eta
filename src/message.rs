@@ -62,7 +62,8 @@ impl Message {
 }
 
 pub trait MessageProvider {
-    fn get(&self) -> Result<&Vec<Message>, io::Error>;
+    fn get_messages(&self) -> Result<&Vec<Message>, io::Error>;
+    fn get_message(&self, id: u64) -> Result<&Message, io::Error>;
     #[allow(dead_code)]
     fn delete(&mut self, id: u64) -> Result<(), io::Error>;
     fn len(&self) -> usize;
@@ -123,14 +124,156 @@ impl DefaultMessageProvider {
                         ",
                     ),
                 ),
+                Message::new(
+                    4,
+                    String::from("bob@bob.me"),
+                    String::from("me@me.me"),
+                    String::from("Hi"),
+                    String::from("Hello there"),
+                ),
+                Message::new(
+                    5,
+                    String::from("alice@alice.me"),
+                    String::from("me@me.me"),
+                    String::from("TPS Reports"),
+                    String::from(
+                        "So uhh...if you could just get those done\n\
+                        yeahh....that'd be greaaaat.",
+                    ),
+                ),
+                Message::new(
+                    6,
+                    String::from("derek@dcn.dev"),
+                    String::from("me@me.me"),
+                    String::from("Big message"),
+                    String::from(
+                        "Lorem ipsum dolor sit amet, consectetur adipiscing \
+                        elit. Sed do eiusmod tempor incididunt ut labore et \
+                        dolore magna aliqua. Ut enim ad minim veniam, quis \
+                        nostrud exercitation ullamco laboris nisi ut aliquip ex\
+                         ea commodo consequat. Duis aute irure dolor in \
+                         reprehenderit in voluptate velit esse cillum dolore eu\
+                          fugiat nulla pariatur. Excepteur sint occaecat \
+                          cupidatat non proident, sunt in culpa qui officia \
+                          deserunt mollit anim id est laborum.\n\
+                        \n\
+                        Sed ut perspiciatis unde omnis iste natus error sit \
+                        voluptatem accusantium doloremque laudantium, totam rem\
+                         aperiam, eaque ipsa quae ab illo inventore veritatis \
+                         et quasi architecto beatae vitae dicta sunt explicabo.\
+                          Nemo enim ipsam voluptatem quia voluptas sit \
+                          aspernatur aut odit aut fugit, sed quia consequuntur\
+                           magni dolores eos qui ratione voluptatem sequi \
+                           nesciunt. Neque porro quisquam est, qui dolorem \
+                           ipsum quia dolor sit amet, consectetur, adipisci \
+                           velit.\n\
+                        ",
+                    ),
+                ),
+                Message::new(
+                    7,
+                    String::from("bob@bob.me"),
+                    String::from("me@me.me"),
+                    String::from("Hi"),
+                    String::from("Hello there"),
+                ),
+                Message::new(
+                    8,
+                    String::from("alice@alice.me"),
+                    String::from("me@me.me"),
+                    String::from("TPS Reports"),
+                    String::from(
+                        "So uhh...if you could just get those done\n\
+                        yeahh....that'd be greaaaat.",
+                    ),
+                ),
+                Message::new(
+                    9,
+                    String::from("derek@dcn.dev"),
+                    String::from("me@me.me"),
+                    String::from("Big message"),
+                    String::from(
+                        "Lorem ipsum dolor sit amet, consectetur adipiscing \
+                        elit. Sed do eiusmod tempor incididunt ut labore et \
+                        dolore magna aliqua. Ut enim ad minim veniam, quis \
+                        nostrud exercitation ullamco laboris nisi ut aliquip ex\
+                         ea commodo consequat. Duis aute irure dolor in \
+                         reprehenderit in voluptate velit esse cillum dolore eu\
+                          fugiat nulla pariatur. Excepteur sint occaecat \
+                          cupidatat non proident, sunt in culpa qui officia \
+                          deserunt mollit anim id est laborum.\n\
+                        \n\
+                        Sed ut perspiciatis unde omnis iste natus error sit \
+                        voluptatem accusantium doloremque laudantium, totam rem\
+                         aperiam, eaque ipsa quae ab illo inventore veritatis \
+                         et quasi architecto beatae vitae dicta sunt explicabo.\
+                          Nemo enim ipsam voluptatem quia voluptas sit \
+                          aspernatur aut odit aut fugit, sed quia consequuntur\
+                           magni dolores eos qui ratione voluptatem sequi \
+                           nesciunt. Neque porro quisquam est, qui dolorem \
+                           ipsum quia dolor sit amet, consectetur, adipisci \
+                           velit.\n\
+                        ",
+                    ),
+                ),
+                Message::new(
+                    10,
+                    String::from("bob@bob.me"),
+                    String::from("me@me.me"),
+                    String::from("Hi"),
+                    String::from("Hello there"),
+                ),
+                Message::new(
+                    11,
+                    String::from("alice@alice.me"),
+                    String::from("me@me.me"),
+                    String::from("TPS Reports"),
+                    String::from(
+                        "So uhh...if you could just get those done\n\
+                        yeahh....that'd be greaaaat.",
+                    ),
+                ),
+                Message::new(
+                    12,
+                    String::from("derek@dcn.dev"),
+                    String::from("me@me.me"),
+                    String::from("Big message"),
+                    String::from(
+                        "Lorem ipsum dolor sit amet, consectetur adipiscing \
+                        elit. Sed do eiusmod tempor incididunt ut labore et \
+                        dolore magna aliqua. Ut enim ad minim veniam, quis \
+                        nostrud exercitation ullamco laboris nisi ut aliquip ex\
+                         ea commodo consequat. Duis aute irure dolor in \
+                         reprehenderit in voluptate velit esse cillum dolore eu\
+                          fugiat nulla pariatur. Excepteur sint occaecat \
+                          cupidatat non proident, sunt in culpa qui officia \
+                          deserunt mollit anim id est laborum.\n\
+                        \n\
+                        Sed ut perspiciatis unde omnis iste natus error sit \
+                        voluptatem accusantium doloremque laudantium, totam rem\
+                         aperiam, eaque ipsa quae ab illo inventore veritatis \
+                         et quasi architecto beatae vitae dicta sunt explicabo.\
+                          Nemo enim ipsam voluptatem quia voluptas sit \
+                          aspernatur aut odit aut fugit, sed quia consequuntur\
+                           magni dolores eos qui ratione voluptatem sequi \
+                           nesciunt. Neque porro quisquam est, qui dolorem \
+                           ipsum quia dolor sit amet, consectetur, adipisci \
+                           velit.\n\
+                        ",
+                    ),
+                ),
             ],
         }
     }
 }
 
 impl MessageProvider for DefaultMessageProvider {
-    fn get(&self) -> Result<&Vec<Message>, io::Error> {
+    fn get_messages(&self) -> Result<&Vec<Message>, io::Error> {
         Ok(&self.messages)
+    }
+
+    fn get_message(&self, id: u64) -> Result<&Message, io::Error> {
+        Ok(&self.messages[id as usize])
     }
 
     fn delete(&mut self, id: u64) -> Result<(), io::Error> {
