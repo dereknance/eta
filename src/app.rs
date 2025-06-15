@@ -1,8 +1,8 @@
-use std::{cell::RefCell};
+use std::cell::RefCell;
 
 use crate::{
     event::{AppEvent, Event, EventHandler},
-    message::{DefaultMessageProvider, Message, MessageProvider, SqliteMessageProvider},
+    message::{Message, MessageProvider, SqliteMessageProvider},
 };
 use ratatui::{
     DefaultTerminal,
@@ -299,11 +299,11 @@ impl<'a> App<'a> {
 
     fn send_message(&mut self) {
         let mut message = Box::new(Message::default());
-        // TODO set from using config
+
         message.set_to(self.compose_to_input.borrow().lines()[0].clone());
         message.set_subject(self.compose_subject_input.borrow().lines()[0].clone());
         message.set_body(self.compose_message_input.borrow().lines().join("\n"));
-        // TODO async transmit to an SMTP server -- read connection details from config
+
         self.messages.send_message(&message);
 
         // Reset state of compose fields
@@ -312,7 +312,6 @@ impl<'a> App<'a> {
         self.compose_message_input = RefCell::new(TextArea::default());
 
         // return to message table
-        // self.mode = Mode::MessageTable(MessageTableMode::MessageSent(MessageSentStatus::Success));
         self.mode = Mode::MessageTable(MessageTableMode::Normal);
     }
 
@@ -450,7 +449,7 @@ impl<'a> App<'a> {
             message.body()
         ));
     }
-    
+
     fn set_message_sent_status(&mut self, status: Option<String>) {
         let sent_status = match status {
             Some(str) => MessageSentStatus::Failed(str),

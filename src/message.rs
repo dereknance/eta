@@ -1,5 +1,10 @@
 use std::{str::FromStr, sync::Arc};
 
+use lettre::{
+    AsyncSmtpTransport, AsyncTransport, Tokio1Executor, message::header::ContentType,
+    transport::smtp::authentication::Credentials,
+};
+use serde::Deserialize;
 use tokio::sync::mpsc;
 
 use crate::event::{AppEvent, Event};
@@ -84,6 +89,14 @@ pub struct DefaultMessageProvider {
 pub struct SqliteMessageProvider {
     connection: Arc<sqlx::SqlitePool>,
     event_sender: mpsc::UnboundedSender<Event>,
+    smtp_config: SmtpConfig,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct SmtpConfig {
+    ip: String,
+    username: String,
+    password: String,
 }
 
 impl DefaultMessageProvider {
@@ -337,9 +350,13 @@ impl SqliteMessageProvider {
             .create_if_missing(true);
         let connection = Arc::new(sqlx::SqlitePool::connect_lazy_with(opts));
 
+        let smtp_config: SmtpConfig =
+            toml::from_str(std::fs::read_to_string("eta.toml")?.as_str())?;
+
         let provider = Self {
             connection,
             event_sender,
+            smtp_config,
         };
 
         Ok(provider)
@@ -453,6 +470,40 @@ impl MessageProvider for SqliteMessageProvider {
     }
 
     fn send_message(&self, message: &Message) {
-        todo!()
+        let event_sender = self.event_sender.clone();
+        let message = message.clone();
+        let smtp_config = self.smtp_config.clone();
+
+        tokio::spawn(async move {
+            // TODO handle validation
+
+            let email = lettre::Message::builder()
+                .from(smtp_config.username.parse().unwrap())
+                .to(message.to().parse().unwrap())
+                .subject(message.subject())
+                .header(ContentType::TEXT_PLAIN)
+                .body(message.body().to_string())
+                .unwrap();
+
+            let creds = Credentials::new(
+                smtp_config.username.to_owned(),
+                smtp_config.password.to_owned(),
+            );
+
+            let mailer: AsyncSmtpTransport<Tokio1Executor> =
+                AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_config.ip)
+                    .unwrap()
+                    .credentials(creds)
+                    .build();
+
+            let app_event = AppEvent::MessageSent(match mailer.send(email).await {
+                Ok(_) => None,
+                Err(e) => Some(e.to_string()),
+            });
+
+            // let app_event = AppEvent::MessageSent(None);
+            let event = Event::App(app_event);
+            let _ = event_sender.send(event);
+        });
     }
 }
