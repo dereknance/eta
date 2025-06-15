@@ -31,6 +31,7 @@ pub struct App<'a> {
     compose_subject_input: RefCell<TextArea<'a>>,
     message_textarea: RefCell<TextArea<'a>>,
     current_message: Box<Message>,
+    loaded_messages: Box<Vec<Message>>,
 }
 
 #[derive(Debug)]
@@ -67,11 +68,14 @@ pub enum ComposeMode {
 
 impl<'a> Default for App<'a> {
     fn default() -> Self {
+        let event_handler = EventHandler::new();
+        let event_sender = event_handler.sender();
+
         let mut app = Self {
             running: true,
             events: EventHandler::new(),
             mode: Mode::MessageTable(MessageTableMode::Normal),
-            messages: DefaultMessageProvider::new(),
+            messages: DefaultMessageProvider::new(event_sender),
             message_table_state: RefCell::new(TableState::default().with_selected(0)),
             message_scroll_state: ScrollbarState::default(),
             compose_message_input: RefCell::new(TextArea::default()),
@@ -79,8 +83,9 @@ impl<'a> Default for App<'a> {
             compose_subject_input: RefCell::new(TextArea::default()),
             message_textarea: RefCell::new(TextArea::default()),
             current_message: Box::new(Message::default()),
+            loaded_messages: Box::new(vec![]),
         };
-        app.message_scroll_state = ScrollbarState::new(app.messages.len() - 1);
+        app.message_scroll_state = ScrollbarState::new(app.loaded_messages.len().saturating_sub(1));
 
         app
     }
@@ -105,6 +110,7 @@ impl<'a> App<'a> {
                 Event::App(app_event) => match app_event {
                     AppEvent::SendMessage => self.send_message(),
                     AppEvent::Quit => self.quit(),
+                    _ => {}
                 },
             }
         }
@@ -143,14 +149,10 @@ impl<'a> App<'a> {
                         .scroll(Scrolling::HalfPageDown);
                 }
                 KeyCode::Left | KeyCode::Char('h') => {
-                    self.message_textarea
-                        .get_mut()
-                        .scroll((0, -40));
+                    self.message_textarea.get_mut().scroll((0, -40));
                 }
                 KeyCode::Right | KeyCode::Char('l') => {
-                    self.message_textarea
-                        .get_mut()
-                        .scroll((0, 40));
+                    self.message_textarea.get_mut().scroll((0, 40));
                 }
                 _ => {}
             },
@@ -317,7 +319,7 @@ impl<'a> App<'a> {
         let mut state = self.message_table_state.borrow_mut();
         let i = match state.selected() {
             Some(i) => {
-                if i >= self.messages.len() - 1 {
+                if i >= self.loaded_messages.len().saturating_sub(1) {
                     0
                 } else {
                     i + 1
@@ -336,7 +338,7 @@ impl<'a> App<'a> {
         let i = match state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.messages.len() - 1
+                    self.loaded_messages.len().saturating_sub(1)
                 } else {
                     i - 1
                 }
@@ -356,11 +358,12 @@ impl<'a> App<'a> {
     pub fn get_message(&self, selected: usize) -> String {
         let mut message = String::from("Not found");
 
-        for i in 0..self.messages.len() {
-            if i == selected {
-                message = self.messages().unwrap().get(i).unwrap().body().into();
-            }
-        }
+        // TODO not compatible with async
+        // for i in 0..self.loaded_messages.len() {
+        //     if i == selected {
+        //         message = self.messages().unwrap().get(i).unwrap().body().into();
+        //     }
+        // }
 
         message
     }
@@ -369,8 +372,8 @@ impl<'a> App<'a> {
         &self.mode
     }
 
-    pub fn messages(&self) -> Result<&Vec<Message>, io::Error> {
-        self.messages.get_messages()
+    pub fn messages(&self) -> &Vec<Message> {
+        &self.loaded_messages
     }
 
     pub fn message_table_state(&self) -> &RefCell<TableState> {

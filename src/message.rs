@@ -1,4 +1,6 @@
-use std::io;
+use tokio::sync::mpsc;
+
+use crate::event::Event;
 
 #[derive(Debug, Default, Clone)]
 pub struct Message {
@@ -62,21 +64,23 @@ impl Message {
 }
 
 pub trait MessageProvider {
-    fn get_messages(&self) -> Result<&Vec<Message>, io::Error>;
-    fn get_message(&self, id: u64) -> Result<&Message, io::Error>;
+    fn get_messages(&self) -> color_eyre::Result<Vec<Message>>;
+    fn get_message(&self, id: u64) -> color_eyre::Result<Message>;
     #[allow(dead_code)]
-    fn delete(&mut self, id: u64) -> Result<(), io::Error>;
-    fn len(&self) -> usize;
+    fn delete(&mut self, id: u64) -> color_eyre::Result<()>;
+    fn len(&self) -> color_eyre::Result<usize>;
 }
 
 #[derive(Debug)]
 pub struct DefaultMessageProvider {
     messages: Vec<Message>,
+    event_sender: mpsc::UnboundedSender<Event>,
 }
 
 impl DefaultMessageProvider {
-    pub fn new() -> Self {
+    pub fn new(event_sender: mpsc::UnboundedSender<Event>) -> Self {
         DefaultMessageProvider {
+            event_sender,
             messages: vec![
                 Message::new(
                     1,
@@ -268,20 +272,20 @@ impl DefaultMessageProvider {
 }
 
 impl MessageProvider for DefaultMessageProvider {
-    fn get_messages(&self) -> Result<&Vec<Message>, io::Error> {
-        Ok(&self.messages)
+    fn get_messages(&self) -> color_eyre::Result<Vec<Message>> {
+        Ok(self.messages.clone())
     }
 
-    fn get_message(&self, id: u64) -> Result<&Message, io::Error> {
-        Ok(&self.messages[id as usize])
+    fn get_message(&self, id: u64) -> color_eyre::Result<Message> {
+        Ok(self.messages[id as usize].clone())
     }
 
-    fn delete(&mut self, id: u64) -> Result<(), io::Error> {
+    fn delete(&mut self, id: u64) -> color_eyre::Result<()> {
         self.messages.retain(|m| m.id != id);
         Ok(())
     }
 
-    fn len(&self) -> usize {
-        self.messages.len()
+    fn len(&self) -> color_eyre::Result<usize> {
+        Ok(self.messages.len())
     }
 }

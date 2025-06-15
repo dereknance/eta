@@ -4,6 +4,8 @@ use ratatui::crossterm::event::Event as CrosstermEvent;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+use crate::message::Message;
+
 /// The frequency at which tick events are emitted.
 const TICK_FPS: f64 = 1.0;
 
@@ -31,6 +33,8 @@ pub enum Event {
 /// You can extend this enum with your own custom events.
 #[derive(Clone, Debug)]
 pub enum AppEvent {
+    MessagesLoaded(Vec<Message>),
+    MessageBodyLoaded(u64, String),
     /// Send a message to an SMTP server
     SendMessage,
     /// Quit the application.
@@ -79,6 +83,10 @@ impl EventHandler {
         // Ignore the result as the reciever cannot be dropped while this struct still has a
         // reference to it
         let _ = self.sender.send(Event::App(app_event));
+    }
+
+    pub fn sender(&self) -> mpsc::UnboundedSender<Event> {
+        self.sender.clone()
     }
 }
 

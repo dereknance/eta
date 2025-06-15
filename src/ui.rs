@@ -40,7 +40,6 @@ fn render_message_table(app: &App, mode: &MessageTableMode, area: Rect, buf: &mu
     let mut table_state = app.message_table_state().borrow_mut();
     let rows = app
         .messages()
-        .unwrap()
         .iter()
         .map(|m| {
             Row::new(vec![
