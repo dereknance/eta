@@ -1,6 +1,6 @@
 use tokio::sync::mpsc;
 
-use crate::event::Event;
+use crate::event::{AppEvent, Event};
 
 #[derive(Debug, Default, Clone)]
 pub struct Message {
@@ -64,11 +64,9 @@ impl Message {
 }
 
 pub trait MessageProvider {
-    fn get_messages(&self) -> color_eyre::Result<Vec<Message>>;
-    fn get_message(&self, id: u64) -> color_eyre::Result<Message>;
-    #[allow(dead_code)]
-    fn delete(&mut self, id: u64) -> color_eyre::Result<()>;
-    fn len(&self) -> color_eyre::Result<usize>;
+    fn get_messages(&self);
+    fn get_message(&self, id: u64);
+    fn send_message(&self, message: &Message);
 }
 
 #[derive(Debug)]
@@ -269,23 +267,52 @@ impl DefaultMessageProvider {
             ],
         }
     }
+
+    pub fn init(&mut self) -> color_eyre::Result<()> {
+        Ok(())
+    }
 }
 
 impl MessageProvider for DefaultMessageProvider {
-    fn get_messages(&self) -> color_eyre::Result<Vec<Message>> {
-        Ok(self.messages.clone())
+    fn get_messages(&self) {
+        let event_sender = self.event_sender.clone();
+        let messages = self.messages.clone();
+        tokio::spawn(async move {
+            // bake in some delay
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+
+            let app_event = AppEvent::MessagesLoaded(messages);
+            let event = Event::App(app_event);
+            let _ = event_sender.send(event);
+        });
     }
 
-    fn get_message(&self, id: u64) -> color_eyre::Result<Message> {
-        Ok(self.messages[id as usize].clone())
-    }
+    fn get_message(&self, id: u64) {
+        let event_sender = self.event_sender.clone();
+        // count from zero since I'm using a vector for these "static" messages.
+        let vector_index = (id as usize).saturating_sub(1);
+        let message_body = String::from(self.messages[vector_index].body());
 
-    fn delete(&mut self, id: u64) -> color_eyre::Result<()> {
-        self.messages.retain(|m| m.id != id);
-        Ok(())
-    }
+        tokio::spawn(async move {
+            // bake in some delay
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 
-    fn len(&self) -> color_eyre::Result<usize> {
-        Ok(self.messages.len())
+            let app_event = AppEvent::MessageBodyLoaded(id, message_body);
+            let event = Event::App(app_event);
+            let _ = event_sender.send(event);
+        });
+    }
+    
+    fn send_message(&self, message: &Message) {
+        let event_sender = self.event_sender.clone();
+        let message = message.clone();
+        
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+
+            let app_event = AppEvent::MessageSent(Some(format!("failed sending to {}", message.to())));
+            let event = Event::App(app_event);
+            let _ = event_sender.send(event);
+        });
     }
 }

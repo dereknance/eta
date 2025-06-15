@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use crate::message::Message;
 
 /// The frequency at which tick events are emitted.
-const TICK_FPS: f64 = 30.0;
+const TICK_FPS: f64 = 4.0;
 
 /// Representation of all possible events.
 #[derive(Clone, Debug)]
@@ -35,10 +35,12 @@ pub enum Event {
 pub enum AppEvent {
     MessagesLoaded(Vec<Message>),
     MessageBodyLoaded(u64, String),
+    MessageSent(Option<String>),
     /// Send a message to an SMTP server
     SendMessage,
     /// Quit the application.
     Quit,
+    Error(String),
 }
 
 /// Terminal event handler.

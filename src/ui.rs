@@ -25,7 +25,7 @@ fn render_message_table(app: &App, mode: &MessageTableMode, area: Rect, buf: &mu
         MessageTableMode::Normal => String::from(""),
         MessageTableMode::MessageSent(status) => match status {
             crate::app::MessageSentStatus::Success => String::from(" Message sent "),
-            crate::app::MessageSentStatus::Failed(e) => format!(" Error: {e}"),
+            crate::app::MessageSentStatus::Failed(e) => format!(" Error: {e} "),
         },
     };
     let status_text_len = status_text.len() as u16;

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, io};
+use std::{cell::RefCell};
 
 use crate::{
     event::{AppEvent, Event, EventHandler},
@@ -16,6 +16,8 @@ use tui_textarea::{CursorMove, Scrolling, TextArea};
 pub struct App<'a> {
     /// Is the application running?
     running: bool,
+    /// Only render when necessary -- save those sweet CPU cycles.
+    needs_render: bool,
     /// Event handler.
     events: EventHandler,
     /// Current application mode.
@@ -34,33 +36,33 @@ pub struct App<'a> {
     loaded_messages: Box<Vec<Message>>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
     MessageTable(MessageTableMode),
     Message(usize),
     Compose(ComposeFocus),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MessageTableMode {
     Normal,
     MessageSent(MessageSentStatus),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MessageSentStatus {
     Success,
     Failed(String),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ComposeFocus {
     To(ComposeMode),
     Subject(ComposeMode),
     Message(ComposeMode),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ComposeMode {
     Normal,
     Editing,
@@ -73,7 +75,8 @@ impl<'a> Default for App<'a> {
 
         let mut app = Self {
             running: true,
-            events: EventHandler::new(),
+            needs_render: true,
+            events: event_handler,
             mode: Mode::MessageTable(MessageTableMode::Normal),
             messages: DefaultMessageProvider::new(event_sender),
             message_table_state: RefCell::new(TableState::default().with_selected(0)),
@@ -99,19 +102,32 @@ impl<'a> App<'a> {
 
     /// Run the application's main loop.
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
+        self.messages.init()?;
+
+        // start by loading messages, since we start on the message table
+        self.messages.get_messages();
+
         while self.running {
-            terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;
+            if self.needs_render {
+                terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;
+            }
             match self.events.next().await? {
                 Event::Tick => self.tick(),
                 Event::Crossterm(event) => match event {
                     crossterm::event::Event::Key(key_event) => self.handle_key_events(key_event)?,
                     _ => {}
                 },
-                Event::App(app_event) => match app_event {
-                    AppEvent::SendMessage => self.send_message(),
-                    AppEvent::Quit => self.quit(),
-                    _ => {}
-                },
+                Event::App(app_event) => {
+                    self.needs_render = true;
+                    match app_event {
+                        AppEvent::MessagesLoaded(messages) => self.set_loaded_messages(messages),
+                        AppEvent::MessageBodyLoaded(id, body) => self.set_current_message(id, body),
+                        AppEvent::MessageSent(option) => self.set_message_sent_status(option),
+                        AppEvent::SendMessage => self.send_message(),
+                        AppEvent::Quit => self.quit(),
+                        AppEvent::Error(e) => self.show_error(e)?,
+                    };
+                }
             }
         }
         Ok(())
@@ -124,6 +140,8 @@ impl<'a> App<'a> {
             self.events.send(AppEvent::Quit);
             return Ok(());
         }
+
+        self.needs_render = true;
 
         match &self.mode {
             Mode::MessageTable(_) => match key_event.code {
@@ -270,8 +288,18 @@ impl<'a> App<'a> {
     /// needs to be updated at a fixed frame rate. E.g. polling a server, updating an animation.
     fn tick(&self) {}
 
+    fn show_error(&self, error_message: String) -> color_eyre::Result<()> {
+        Err(color_eyre::eyre::eyre!(error_message))
+    }
+
     fn send_message(&mut self) {
+        let mut message = Box::new(Message::default());
+        // TODO set from using config
+        message.set_to(self.compose_to_input.borrow().lines()[0].clone());
+        message.set_subject(self.compose_subject_input.borrow().lines()[0].clone());
+        message.set_body(self.compose_message_input.borrow().lines().join("\n"));
         // TODO async transmit to an SMTP server -- read connection details from config
+        self.messages.send_message(&message);
 
         // Reset state of compose fields
         self.compose_to_input = RefCell::new(TextArea::default());
@@ -279,7 +307,8 @@ impl<'a> App<'a> {
         self.compose_message_input = RefCell::new(TextArea::default());
 
         // return to message table
-        self.mode = Mode::MessageTable(MessageTableMode::MessageSent(MessageSentStatus::Success));
+        // self.mode = Mode::MessageTable(MessageTableMode::MessageSent(MessageSentStatus::Success));
+        self.mode = Mode::MessageTable(MessageTableMode::Normal);
     }
 
     /// Set running to false to quit the application.
@@ -288,31 +317,17 @@ impl<'a> App<'a> {
     }
 
     fn view_message(&mut self) {
-        self.message_textarea = RefCell::new(TextArea::default());
-
         match self.message_table_state.borrow().selected() {
             Some(id) => {
-                if (id + 1) as u64 != self.current_message.id() {
-                    self.current_message = Box::new(
-                        self.messages
-                            .get_message(id as u64)
-                            .expect("failed to get message")
-                            .clone(),
-                    )
-                }
-                self.mode = Mode::Message(id)
+                self.message_textarea = RefCell::new(TextArea::default());
+                let message_id = (id + 1) as u64;
+                // ask the provider to load the message body
+                self.messages.get_message(message_id);
+                self.mode = Mode::Message(id);
+                self.needs_render = true;
             }
             None => {}
         }
-
-        let message = &self.current_message;
-        self.message_textarea.get_mut().insert_str(format!(
-            "From: {}\nTo: {}\nSubject: {}\n\n{}",
-            message.from(),
-            message.to(),
-            message.subject(),
-            message.body()
-        ));
     }
 
     fn next_message(&mut self) {
@@ -330,7 +345,8 @@ impl<'a> App<'a> {
         state.select(Some(i));
 
         // clear any status messages
-        self.mode = Mode::MessageTable(MessageTableMode::Normal)
+        self.mode = Mode::MessageTable(MessageTableMode::Normal);
+        self.needs_render = true;
     }
 
     fn previous_message(&mut self) {
@@ -353,19 +369,6 @@ impl<'a> App<'a> {
 
     fn compose_message(&mut self) {
         self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Normal));
-    }
-
-    pub fn get_message(&self, selected: usize) -> String {
-        let mut message = String::from("Not found");
-
-        // TODO not compatible with async
-        // for i in 0..self.loaded_messages.len() {
-        //     if i == selected {
-        //         message = self.messages().unwrap().get(i).unwrap().body().into();
-        //     }
-        // }
-
-        message
     }
 
     pub fn mode(&self) -> &Mode {
@@ -402,5 +405,58 @@ impl<'a> App<'a> {
 
     pub fn current_message(&self) -> &Message {
         &self.current_message
+    }
+
+    fn set_loaded_messages(&mut self, messages: Vec<Message>) {
+        self.loaded_messages = Box::new(messages);
+        // also set the first row of the message table as selected if there is
+        // not yet anything selected.
+        let mut table_state = self.message_table_state.borrow_mut();
+        if self.loaded_messages.len() > 0 && table_state.selected() == None {
+            table_state.select(Some(0));
+        }
+    }
+
+    fn set_current_message(&mut self, id: u64, body: String) {
+        if id != self.current_message.id() {
+            for message in self.loaded_messages.iter() {
+                if id == message.id() {
+                    self.current_message = Box::new(message.clone());
+                    self.current_message.set_body(body);
+                    break;
+                }
+            }
+        }
+
+        match self.message_table_state.borrow().selected() {
+            Some(table_id) => {
+                self.mode = Mode::Message(table_id);
+                self.needs_render = true;
+            }
+            None => {}
+        }
+
+        let message = &self.current_message;
+        self.message_textarea.get_mut().insert_str(format!(
+            "From: {}\nTo: {}\nSubject: {}\n\n{}",
+            message.from(),
+            message.to(),
+            message.subject(),
+            message.body()
+        ));
+    }
+    
+    fn set_message_sent_status(&mut self, status: Option<String>) {
+        let sent_status = match status {
+            Some(str) => MessageSentStatus::Failed(str),
+            None => MessageSentStatus::Success,
+        };
+        let table_mode = MessageTableMode::MessageSent(sent_status);
+        let app_mode = Mode::MessageTable(table_mode);
+
+        match self.mode {
+            Mode::MessageTable(_) => self.mode = app_mode,
+            _ => {}
+        }
     }
 }
