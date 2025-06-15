@@ -11,11 +11,16 @@ use crate::app::{App, ComposeFocus, ComposeMode, MessageTableMode, Mode};
 impl Widget for &App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self.mode() {
+            Mode::LoadingMessages => render_loading(area, buf),
             Mode::MessageTable(mode) => render_message_table(self, mode, area, buf),
             Mode::Message(_) => render_message(self, area, buf),
             Mode::Compose(focus) => render_compose(self, focus, area, buf),
         };
     }
+}
+
+fn render_loading(area: Rect, buf: &mut Buffer) {
+    Paragraph::new("Loading . . .").render(area, buf);
 }
 
 fn render_message_table(app: &App, mode: &MessageTableMode, area: Rect, buf: &mut Buffer) {

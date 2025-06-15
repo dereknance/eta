@@ -2,7 +2,7 @@ use std::{cell::RefCell};
 
 use crate::{
     event::{AppEvent, Event, EventHandler},
-    message::{DefaultMessageProvider, Message, MessageProvider},
+    message::{DefaultMessageProvider, Message, MessageProvider, SqliteMessageProvider},
 };
 use ratatui::{
     DefaultTerminal,
@@ -23,7 +23,7 @@ pub struct App<'a> {
     /// Current application mode.
     mode: Mode,
     /// Message provider.
-    messages: DefaultMessageProvider,
+    messages: SqliteMessageProvider,
     /// Message table state.
     message_table_state: RefCell<TableState>,
     /// Message table scrollbar state.
@@ -38,6 +38,7 @@ pub struct App<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
+    LoadingMessages,
     MessageTable(MessageTableMode),
     Message(usize),
     Compose(ComposeFocus),
@@ -78,7 +79,7 @@ impl<'a> Default for App<'a> {
             needs_render: true,
             events: event_handler,
             mode: Mode::MessageTable(MessageTableMode::Normal),
-            messages: DefaultMessageProvider::new(event_sender),
+            messages: SqliteMessageProvider::new(event_sender).unwrap(),
             message_table_state: RefCell::new(TableState::default().with_selected(0)),
             message_scroll_state: ScrollbarState::default(),
             compose_message_input: RefCell::new(TextArea::default()),
@@ -102,7 +103,8 @@ impl<'a> App<'a> {
 
     /// Run the application's main loop.
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
-        self.messages.init()?;
+        // allow the message provider to initialize
+        self.messages.init().await?;
 
         // start by loading messages, since we start on the message table
         self.messages.get_messages();
@@ -144,6 +146,7 @@ impl<'a> App<'a> {
         self.needs_render = true;
 
         match &self.mode {
+            Mode::LoadingMessages => {}
             Mode::MessageTable(_) => match key_event.code {
                 KeyCode::Enter => self.view_message(),
                 KeyCode::Char('c') => self.compose_message(),
@@ -168,8 +171,10 @@ impl<'a> App<'a> {
                 }
                 KeyCode::Left | KeyCode::Char('h') => {
                     self.message_textarea.get_mut().scroll((0, -40));
+                    self.message_textarea.get_mut().scroll((0, -40));
                 }
                 KeyCode::Right | KeyCode::Char('l') => {
+                    self.message_textarea.get_mut().scroll((0, 40));
                     self.message_textarea.get_mut().scroll((0, 40));
                 }
                 _ => {}

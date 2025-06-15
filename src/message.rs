@@ -1,6 +1,11 @@
+use std::{str::FromStr, sync::Arc};
+
 use tokio::sync::mpsc;
 
 use crate::event::{AppEvent, Event};
+
+use futures::TryStreamExt;
+use sqlx::{Row, sqlite::SqliteRow};
 
 #[derive(Debug, Default, Clone)]
 pub struct Message {
@@ -75,7 +80,14 @@ pub struct DefaultMessageProvider {
     event_sender: mpsc::UnboundedSender<Event>,
 }
 
+#[derive(Debug)]
+pub struct SqliteMessageProvider {
+    connection: Arc<sqlx::SqlitePool>,
+    event_sender: mpsc::UnboundedSender<Event>,
+}
+
 impl DefaultMessageProvider {
+    #[allow(dead_code)]
     pub fn new(event_sender: mpsc::UnboundedSender<Event>) -> Self {
         DefaultMessageProvider {
             event_sender,
@@ -268,6 +280,7 @@ impl DefaultMessageProvider {
         }
     }
 
+    #[allow(dead_code)]
     pub fn init(&mut self) -> color_eyre::Result<()> {
         Ok(())
     }
@@ -302,17 +315,144 @@ impl MessageProvider for DefaultMessageProvider {
             let _ = event_sender.send(event);
         });
     }
-    
+
     fn send_message(&self, message: &Message) {
         let event_sender = self.event_sender.clone();
         let message = message.clone();
-        
+
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 
-            let app_event = AppEvent::MessageSent(Some(format!("failed sending to {}", message.to())));
+            let app_event =
+                AppEvent::MessageSent(Some(format!("failed sending to {}", message.to())));
             let event = Event::App(app_event);
             let _ = event_sender.send(event);
         });
+    }
+}
+
+impl SqliteMessageProvider {
+    pub fn new(event_sender: mpsc::UnboundedSender<Event>) -> color_eyre::Result<Self> {
+        let opts = sqlx::sqlite::SqliteConnectOptions::from_str("sqlite://messages.db")?
+            .create_if_missing(true);
+        let connection = Arc::new(sqlx::SqlitePool::connect_lazy_with(opts));
+
+        let provider = Self {
+            connection,
+            event_sender,
+        };
+
+        Ok(provider)
+    }
+
+    /// Create the necessary schema if it does not already exist.
+    pub async fn init(&self) -> color_eyre::Result<()> {
+        // deref to get the protected type, then make a reference
+        // init and seed are called once, and in order, so I'm not worried about
+        // concurrency
+        let conn = &*self.connection;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_addr TEXT NOT NULL,
+                to_addr TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL
+            )",
+        )
+        .execute(conn)
+        .await?;
+
+        let result: (u64,) = sqlx::query_as("SELECT COUNT(id) FROM messages")
+            .fetch_one(conn)
+            .await?;
+        let count = result.0;
+
+        if count != 0 {
+            return Ok(());
+        }
+
+        self.seed_messages().await?;
+
+        Ok(())
+    }
+
+    async fn seed_messages(&self) -> Result<(), sqlx::Error> {
+        let _ = sqlx::query(
+            "INSERT INTO messages (id, from_addr, to_addr, subject, body) VALUES (
+                1, 'alice@example.com', 'bob@example.com', 'Hello there', 'Bob,\n\nI hope you are well.\n\nRegards,\nAlice\n'
+        )",
+        )
+        .execute(&*self.connection)
+        .await?;
+
+        Ok(())
+    }
+}
+
+impl MessageProvider for SqliteMessageProvider {
+    fn get_messages(&self) {
+        let event_sender = self.event_sender.clone();
+        let connection = self.connection.clone();
+
+        tokio::spawn(async move {
+            let mut messages = vec![];
+
+            let mut stream =
+                sqlx::query("SELECT id, from_addr, to_addr, subject FROM messages ORDER BY id")
+                    .map(|row: SqliteRow| Message {
+                        id: row.get(0),
+                        from: row.get(1),
+                        to: row.get(2),
+                        subject: row.get(3),
+                        body: String::from(""),
+                    })
+                    .fetch(&*connection);
+
+            loop {
+                let result = stream.try_next().await;
+                if let Err(e) = result {
+                    let app_event = AppEvent::Error(e.to_string());
+                    let event = Event::App(app_event);
+                    let _ = event_sender.send(event);
+                    return;
+                }
+
+                if let Some(message) = result.unwrap() {
+                    messages.push(message);
+                } else {
+                    break;
+                }
+            }
+
+            let app_event = AppEvent::MessagesLoaded(messages);
+            let event = Event::App(app_event);
+            let _ = event_sender.send(event);
+        });
+    }
+
+    fn get_message(&self, id: u64) {
+        let event_sender = self.event_sender.clone();
+        let connection = self.connection.clone();
+
+        tokio::spawn(async move {
+            let result = sqlx::query("SELECT body FROM messages WHERE id = ?")
+                .bind(id as i64)
+                .fetch_one(&*connection)
+                .await;
+
+            let app_event = match result {
+                Ok(row) => AppEvent::MessageBodyLoaded(id, row.get("body")),
+                Err(e) => AppEvent::Error(e.to_string()),
+            };
+
+            let event = Event::App(app_event);
+            let _ = event_sender.send(event);
+        });
+    }
+
+    fn send_message(&self, message: &Message) {
+        todo!()
     }
 }
