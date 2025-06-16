@@ -397,9 +397,48 @@ impl SqliteMessageProvider {
 
     async fn seed_messages(&self) -> Result<(), sqlx::Error> {
         let _ = sqlx::query(
-            "INSERT INTO messages (id, from_addr, to_addr, subject, body) VALUES (
-                1, 'alice@example.com', 'bob@example.com', 'Hello there', 'Bob,\n\nI hope you are well.\n\nRegards,\nAlice\n'
-        )",
+            "INSERT INTO messages (id, from_addr, to_addr, subject, body) VALUES
+                (1, 'alice@example.com', 'bob@example.com', 'Hello there', 'Bob,\n\
+                    \n\
+                    I hope you are well.\n\
+                    \n\
+                    Regards,\n\
+                    Alice'),
+                (2, 'alice@example.com', 'bob@example.com', 'Meeting reminder', 'Dear Team,\n\
+                    \n\
+                    I hope this message finds you well. I am writing to remind you about our upcoming meeting\n\
+                    scheduled for tomorrow at 10 AM. The agenda includes a review of our current projects and\n\
+                    planning for the next quarter. Your input and participation are crucial to the success of\n\
+                    this meeting. Please ensure you have all the necessary documents and reports ready. If you\n\
+                    have any points you would like to add to the agenda, kindly let me know before the meeting.\n\
+                    Looking forward to a productive discussion.\n\
+                    Best regards,\n\
+                    \n\
+                    Alice'),
+                (3, 'eve@example.com', 'bob@example.com', 'Important Notice: System Maintenance', 'Dear Users,\n\
+                    \n\
+                    We would like to inform you that our system will undergo scheduled maintenance this Saturday\n\
+                    from 2 AM to 6 AM. During this time, you may experience intermittent disruptions in service.\n\
+                    We apologize for any inconvenience this may cause and appreciate your understanding. The\n\
+                    maintenance is necessary to implement several updates and improvements that will enhance\n\
+                    performance and security. If you have any urgent matters that need to be addressed,\n\
+                    please contact our support team, and they will assist you promptly. Thank you for your\n\
+                    cooperation.\n\
+                    \n\
+                    Sincerely,\n\
+                    \n\
+                    Eve'),
+                (4, 'sarah@example.com', 'bob@example.com', 'Reminder: Submit Your Timesheets by EOD', 'Hi Everyone,\n\
+                    \n\
+                    This is a friendly reminder to please submit your timesheets for the past week by the end of\n\
+                    the day today. Accurate and timely submission of timesheets is essential for our payroll and\n\
+                    project tracking processes. If you encounter any issues or need assistance, please do not\n\
+                    hesitate to reach out to our HR department. They are always ready to help and ensure a smooth\n\
+                    process for everyone. Thank you for your cooperation.\n\
+                    \n\
+                    Best,\n\
+                    \n\
+                    Sarah')",
         )
         .execute(&*self.connection)
         .await?;

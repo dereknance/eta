@@ -123,8 +123,8 @@ fn render_compose(app: &App, focus: &ComposeFocus, area: Rect, buf: &mut Buffer)
     let mut subject_input = app.compose_subject_input().borrow_mut();
     let mut message = app.compose_message_input().borrow_mut();
     let keybinds = match focus {
-        ComposeFocus::Message(ComposeMode::Editing) => Line::from("Esc: Stop editing"),
-        _ => Line::from("q: Back Tab: Next field Enter: Select field"),
+        ComposeFocus::Message(ComposeMode::Editing) => Line::from("  Esc:Stop editing  "),
+        _ => Line::from("  q:Back  Tab:Next  Enter:Edit  S:Send  "),
     };
 
     to_input.set_cursor_line_style(default_style);
