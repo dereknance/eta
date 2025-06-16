@@ -185,6 +185,9 @@ impl<'a> App<'a> {
                         KeyCode::Esc | KeyCode::Char('q') => {
                             self.mode = Mode::MessageTable(MessageTableMode::Normal)
                         }
+                        KeyCode::Char('S') => {
+                            self.events.send(AppEvent::SendMessage);
+                        }
                         KeyCode::Enter => {
                             self.mode = Mode::Compose(ComposeFocus::To(ComposeMode::Editing))
                         }
@@ -211,6 +214,9 @@ impl<'a> App<'a> {
                     ComposeMode::Normal => match key_event.code {
                         KeyCode::Esc | KeyCode::Char('q') => {
                             self.mode = Mode::MessageTable(MessageTableMode::Normal)
+                        }
+                        KeyCode::Char('S') => {
+                            self.events.send(AppEvent::SendMessage);
                         }
                         KeyCode::Enter => {
                             self.mode = Mode::Compose(ComposeFocus::Subject(ComposeMode::Editing))
